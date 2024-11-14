@@ -1,0 +1,2531 @@
+<ASSISTANT_UPDATE>
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/block.lua
+
+---@class ulf.lib.conf.block
+local M = {}
+
+local ulf = {
+	lib = require("ulf.lib"),
+}
+M.NIL = string.char(0)
+
+local split = ulf.lib.string.split
+local tbl_get = ulf.lib.table.tbl_get
+local tbl_isempty = ulf.lib.table.tbl_isempty
+local make_message = ulf.lib.error.make_message
+
+---@alias ulf.lib.conf.hook_spec_fn fun(key:string):any
+
+---@class ulf.lib.conf.Hook
+---@field key? string
+---@field transform ulf.lib.conf.hook_spec_fn
+local Hook = setmetatable({}, {
+	---@param _ ulf.lib.conf.Hook
+	---@param key string
+	---@param fn ulf.lib.conf.hook_spec_fn
+	__call = function(_, key, fn)
+		local obj = {
+			key = key,
+			transform = fn,
+		}
+		return obj
+	end,
+})
+M.Hook = Hook
+
+---@alias ulf.lib.conf.ConfigBlockData table<string,any>
+
+---@class ulf.lib.conf.ConfigBlockSpec
+---@field hooks? ulf.lib.conf.Hook[] @any hooks to transform key/values on creation
+---@field data? ulf.lib.conf.ConfigBlockData @config data
+
+---@class _ulf.lib.conf.ConfigBlock
+---@field data table<string,any> @config data
+---@field defaults ulf.lib.conf.ctable @default values are used to validate keys and return default values if not present in the config table
+---@field hooks table<string,ulf.lib.conf.Hook> @map of hooks which transform values when written to the data table
+
+---@class ulf.lib.conf.ConfigBlockBase
+---@field _ _ulf.lib.conf.ConfigBlock @internal structure
+---@overload fun(data:ulf.lib.conf.ConfigBlockData?):ulf.lib.conf.ConfigBlock
+
+---@class ulf.lib.conf.ConfigBlock : ulf.lib.conf.ConfigBlockBase
+---@field new fun(default:ulf.lib.conf.ctable,config:ulf.lib.conf.ConfigBlockSpec?):ulf.lib.conf.ConfigBlock
+---@field resolve_fallback fun(self:ulf.lib.conf.ConfigBlock,path:string):any
+
+---@class ulf.lib.conf.ConfigBlockCreator : ulf.lib.conf.ConfigBlockBase
+---@overload fun(default:ulf.lib.conf.ctable,config:ulf.lib.conf.ConfigBlockSpec?):ulf.lib.conf.ConfigBlock
+ConfigBlock = setmetatable({}, {
+	---Instance request
+	---@param t ulf.lib.conf.ConfigBlock
+	---@param defaults ulf.lib.conf.ctable
+	---@param config? ulf.lib.conf.ConfigBlockSpec
+	__call = function(t, defaults, config)
+		return t.new(defaults, config)
+	end,
+})
+ConfigBlock.__index = ConfigBlock
+M.ConfigBlock = ConfigBlock
+
+ConfigBlock.NIL = M.NIL --convenient
+
+ConfigBlock.meta = {
+	---@param t ulf.lib.conf.ConfigBlock
+	---@param data ulf.lib.conf.ConfigBlockData
+	__call = function(t, data)
+		if type(data) == "table" then
+			if tbl_isempty(data) then
+				t._.data = {}
+				return
+			end
+
+			for key, value in pairs(data) do
+				if value == ConfigBlock.NIL then
+					value = nil
+				end
+				t._.data[key] = value
+			end
+		end
+	end,
+
+	---comment
+	---@param t ulf.lib.conf.ConfigBlock
+	---@param k string
+	---@return any
+	__index = function(t, k)
+		local v = rawget(t, k) or rawget(ConfigBlock, k)
+		if v then
+			return v
+		end
+		local internal = rawget(t, "_")
+
+		-- Case 1: Check if a value is set directly in `data`
+		if internal.data[k] ~= nil then
+			return internal.data[k]
+		end
+
+		---@type ulf.lib.conf.cfield
+		local default_cfield = internal.defaults._values[k]
+
+		-- Case 2: Check if there is a fallback path defined for this key in the default cfield
+		-- If so resolve_fallback value
+		if default_cfield and default_cfield.fallback then
+			local fallback_value = t:resolve_fallback(default_cfield.fallback)
+			if fallback_value ~= nil then
+				return fallback_value
+			end
+		end
+
+		-- Case 3: return the default value as a last resort
+		if internal.defaults[k] ~= nil then
+			return internal.defaults[k]
+		else
+			error(make_message({ "ulf.lib.conf.ConfigBlock", "__index" }, "Error: no such config field '%s'", k))
+		end
+	end,
+	__class = {
+		name = "ConfigBlock",
+	},
+}
+---@class ulf.lib.conf.ConfigBlockApi
+
+---@param defaults ulf.lib.conf.ctable
+---@param config? ulf.lib.conf.ConfigBlockSpec
+---@return ulf.lib.conf.ConfigBlock
+function ConfigBlock.new(defaults, config)
+	assert(
+		type(defaults) == "table",
+		make_message({ "ulf.lib.conf.ConfigBlock", "new" }, "Error: default must be a ctable. Got=%s", defaults)
+	)
+
+	config = config or {}
+	---@type table<string,ulf.lib.conf.Hook>
+	local hooks = {}
+
+	for key, value in pairs(defaults._values) do
+		if type(value) == "table" and type(value.hook) == "function" then
+			hooks[key] = { key = key, transform = value.hook }
+		end
+	end
+
+	-- overrides hooks defined in ctable
+	if config.hooks then
+		for _, hook in ipairs(config.hooks) do
+			hooks[hook.key] = hook
+		end
+	end
+
+	---@type ulf.lib.conf.ConfigBlockBase
+	local obj = {
+		_ = {
+
+			hooks = hooks,
+			data = setmetatable({}, {
+
+				---@param t ulf.lib.conf.ConfigBlock
+				---@param k string
+				---@param v any
+				__newindex = function(t, k, v)
+					local set_kvpair = function()
+						rawset(t, k, v)
+					end
+
+					---@return boolean
+					local is_valid_key = function()
+						return defaults._values[k] ~= nil
+					end
+					local apply_hook = function()
+						v = hooks[k].transform(v)
+					end
+
+					if not is_valid_key() then
+						error(make_message({ "ulf.lib.conf.ConfigBlock", "__newindex" }, "Error: invalid key: %s", k))
+					end
+
+					if hooks[k] then
+						apply_hook()
+					end
+					set_kvpair()
+				end,
+			}),
+			defaults = defaults,
+		},
+	}
+	obj = setmetatable(obj, ConfigBlock.meta)
+
+	if config.data then
+		for key, value in pairs(config.data) do
+			obj._.data[key] = value
+		end
+	end
+	return obj
+end
+
+-- Define the resolve_fallback function to follow the fallback path
+---comment
+---@param fallback_path string|function
+---@return any
+function ConfigBlock:resolve_fallback(fallback_path)
+	---@type string[]
+	local nodes
+	if fallback_path:match("%.") then
+		nodes = split(fallback_path, ".", { plain = true })
+	else
+		nodes = { fallback_path }
+	end
+
+	local fallback_value = tbl_get(self._.defaults, unpack(nodes))
+
+	assert(
+		type(fallback_value) ~= nil,
+		make_message(
+			{ "ulf.lib.conf.block.ConfigBlock", "resolve_fallback" },
+			"value of fallback field '%s' returned nil. This sould not happen.",
+			tostring(fallback_value)
+		)
+	)
+
+	return fallback_value
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/block.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/class.lua
+
+---@class ulf.lib.conf.class
+local M = {}
+
+local ulf = {
+	lib = require("ulf.lib"),
+}
+
+---comment
+---@param name string
+---@param nodes ulf.lib.conf.ConfigBlock
+local create_class = function(name, nodes)
+	--- ConfigClass is a thin wrapper for which the user can use
+	--- to create multiple instances of a config
+	---@class ulf.lib.conf.ConfigClass
+	---@field tag? string
+	---@field class {Config:ulf.lib.conf.ConfigClass}
+	local ConfigClass = setmetatable({
+
+		-- copy the tree so that each class is independent
+		_tree = ulf.lib.table.deepcopy(nodes),
+	}, {
+		__call = function(t, ...)
+			return t.new(...)
+		end,
+
+		__class = {
+			name = "config_class",
+		},
+	})
+
+	function ConfigClass.new()
+		return setmetatable({
+			_tree = ulf.lib.table.deepcopy(nodes),
+		}, {
+			__index = function(t, k)
+				local _tree = rawget(t, "_tree")
+				---@type any
+				local v = _tree[k]
+				if v then
+					return v
+				end
+			end,
+		})
+	end
+	return ConfigClass
+end
+
+---@class ulf.lib.conf.ClassGenerator
+---@field name string
+---@field ctable ulf.lib.conf.ctable
+---@overload fun(name:string,ctable:ulf.lib.conf.ctable):ulf.lib.conf.ClassGenerator
+local ClassGenerator = {}
+ClassGenerator.__index = ClassGenerator
+M.ClassGenerator = ClassGenerator
+
+---@param name string
+---@param ctable ulf.lib.conf.ctable
+---@return ulf.lib.conf.ClassGenerator
+function ClassGenerator.new(name, ctable)
+	return setmetatable({
+		name = name,
+		ctable = ctable,
+	}, ClassGenerator)
+end
+
+function ClassGenerator:init_class(nodes)
+	self.class = setmetatable({}, {
+		__call = function(t, ...)
+			return t.new(...)
+		end,
+
+		__class = {
+			name = "config_class",
+		},
+	})
+
+	self.class.new = function(...)
+		return setmetatable({
+			_tree = ulf.lib.table.deepcopy(nodes),
+		}, {
+			__index = function(t, k)
+				local _tree = rawget(t, "_tree")
+				---@type any
+				local v = _tree[k]
+				if v then
+					return v
+				end
+			end,
+		})
+	end
+end
+
+---comment
+---@return {[string]:ulf.lib.conf.ConfigClass}
+function ClassGenerator:bake()
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+
+	-- map of path -> node
+	---@type {[string]:table}
+	local nodes = {}
+
+	-- Use walk_post_order to populate the nested structure
+	self.ctable.walk_post_order(function(node)
+		if node.is_ctable then
+			nodes[node.path] = ConfigBlock(node.value)
+		end
+	end)
+
+	P({
+		"!!!!!!!!!!!!!!!!!!",
+		nodes = nodes,
+	})
+	---@type ulf.lib.conf.ConfigBlock
+	local current_node
+
+	---@type string
+	local current_path
+
+	-- Link each ConfigBlock to its parent
+	for path, node in pairs(nodes) do
+		-- Determine the parent path by removing the last segment from `path`
+		local parent_path = path:match("(.+)%.[^%.]+$") -- Matches the path up to the last `.`
+
+		-- If there's a parent, link the current node to its parent
+		if parent_path and nodes[parent_path] then
+			local parent_node = nodes[parent_path]
+			-- Link the current `node` under the `parent_node` using its key
+			local key = path:match("[^%.]+$") -- Extract the last segment as the key
+			---@type table
+			-- P(path, parent_path, key)
+			parent_node[key] = node
+		else
+			-- If no parent, this node is likely the root and can be directly attached
+			self:init_class(node)
+		end
+	end
+
+	return {
+		[self.name] = self.class,
+	}
+end
+
+---comment
+---@param name string
+---@param ctable ulf.lib.conf.ctable
+---@return {[string]:ulf.lib.conf.ConfigClass}
+function M.create_class(name, ctable)
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+
+	-- map of path -> node
+	---@type {[string]:table}
+	local nodes = {}
+
+	-- Use walk_post_order to populate the nested structure
+	ctable.walk_post_order(function(node)
+		if node.is_ctable then
+			nodes[node.path] = ConfigBlock(node.value)
+		end
+	end)
+
+	---@type ulf.lib.conf.ConfigBlock
+	local current_node
+
+	---@type string
+	local current_path
+
+	-- Link each ConfigBlock to its parent
+	for path, node in pairs(nodes) do
+		-- Determine the parent path by removing the last segment from `path`
+		local parent_path = path:match("(.+)%.[^%.]+$") -- Matches the path up to the last `.`
+
+		-- If there's a parent, link the current node to its parent
+		if parent_path and nodes[parent_path] then
+			local parent_node = nodes[parent_path]
+			-- Link the current `node` under the `parent_node` using its key
+			local key = path:match("[^%.]+$") -- Extract the last segment as the key
+			---@type table
+			-- P(path, parent_path, key)
+			parent_node[key] = node
+		else
+			-- If no parent, this node is likely the root and can be directly attached
+			local class = create_class(name, node)
+
+			return {
+				[name] = class,
+			}
+		end
+	end
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/class.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/field.lua
+
+---@class ulf.lib.conf.field
+local M = {}
+
+local trim = require("ulf.lib.string.trimmer").trim
+local gsplit = require("ulf.lib.string.splitter").gsplit
+local dedent = require("ulf.lib.string.dedent").dedent
+
+local make_message = require("ulf.lib.error").make_message
+
+---@class ulf.lib.conf.cfield_base
+---@field value? any
+---@field hook? ulf.lib.conf.hook_spec_fn
+---@field fallback? string
+---@field type string
+---@field description string
+
+---@class ulf.lib.conf.cfield : ulf.lib.conf.cfield_base
+
+M.valid_types = {
+
+	["string"] = true,
+	["number"] = true,
+	["function"] = true,
+	["boolean"] = true,
+	["table"] = true,
+}
+
+--- Returns a config field
+---@param opts? ulf.lib.conf.cfield_base|string
+---@return ulf.lib.conf.cfield
+M.cfield = function(opts)
+	assert(
+		type(opts) == "table",
+		make_message(
+			{ "ulf.lib.conf.field", "cfield" },
+			"opts must be a table with {optional,value,type,description}. got=%s",
+			tostring(opts)
+		)
+	)
+
+	return setmetatable({
+		description = opts.description,
+		type = opts.type,
+		fallback = opts.fallback,
+		value = opts.value,
+		hook = opts.hook,
+	}, {
+		__class = { name = "cfield" },
+	})
+end
+
+---@param s string
+---@return string
+local normalize = function(s)
+	local lines = {}
+	for line in gsplit(s, "\n", { plain = true }) do
+		table.insert(lines, trim(line))
+	end
+	return table.concat(lines, "\n")
+end
+
+---comment
+---@param t table
+---@return boolean
+function M.is_cfield_spec(t)
+	if type(t) ~= "table" or getmetatable(t) then
+		return false
+	end
+
+	local has_description = type(t[#t]) == "string"
+
+	if not has_description then
+		return false
+	end
+
+	if #t == 1 then
+		if t.type == nil then
+			return false
+		end
+	end
+
+	return true
+end
+
+---@param key string
+---@param value any
+---@param field_type string
+---@param v ulf.lib.conf.cfield_base
+M.validate = function(key, value, field_type, v)
+	if field_type and not M.valid_types[field_type] then
+		error(
+			make_message(
+				{ "ulf.lib.conf.field", "validate" },
+				"Field '%s': 'type' can have the value: boolean, string, number, function or table. got=%s",
+				key,
+				field_type
+			)
+		)
+	end
+
+	if value == nil and not field_type then
+		error(
+			make_message(
+				{ "ulf.lib.conf.field", "validate" },
+				"Field '%s': type of field must be set if field has no value",
+				key
+			)
+		)
+	end
+
+	if type(v[#v]) ~= "string" then
+		error(
+			make_message(
+				{ "ulf.lib.conf.field", "parse_cfield" },
+				"Field '%s': 'description' must be a string. got=%s",
+				key,
+				type(v[#v])
+			)
+		)
+	end
+
+	if v.hook and type(v.hook) ~= "function" then
+		error(
+			make_message(
+				{ "ulf.lib.conf.field", "parse_cfield" },
+				"Field '%s': 'hook' must be a function. got=%s",
+				key,
+				type(v[#v])
+			)
+		)
+	end
+
+	if v.fallback then
+		if type(v.fallback) ~= "function" and type(v.fallback) ~= "string" then
+			error(
+				make_message(
+					{ "ulf.lib.conf.field", "parse_cfield" },
+					"Field '%s': 'fallback' must be a string or function. got=%s",
+					key,
+					type(v[#v])
+				)
+			)
+		end
+	end
+end
+
+--- Parses a cfield table spec and returns an instance of cfield.
+---
+--- Value is always the first list item. If the key 'value' is
+--- present then value is the value of this kv paire. If len is 1 then
+--- it is assumed that only a description is given and value can
+--- be optional set.
+---
+--- @param k string The key of the field
+--- @param v table The value specification
+--- @return ulf.lib.conf.cfield
+function M.parse_cfield(k, v)
+	-- Extract value
+	---@type any
+	local value = v[1]
+	if #v == 1 then
+		value = nil
+	end
+
+	-- extract field type.
+	local field_type = v.type or (value ~= nil and type(value)) -- Only determine type from value if it's not nil
+
+	M.validate(k, value, field_type, v)
+	local desc = dedent(normalize(v[#v]))
+
+	return M.cfield({
+		description = desc,
+		type = field_type,
+		hook = v.hook,
+		fallback = v.fallback,
+		value = value,
+	})
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/field.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/init.lua
+
+-- local lazy_require = require("ulf.lib.module.lazy_require").lazy_require
+
+---@brief [[
+--- ulf.lib.conf is a configuration management module designed for handling,
+--- validating, and manipulating hierarchical configuration tables in Lua.
+--- It enables structured configuration definitions with support for default values,
+--- fallback logic, hooks, and typed fields.
+---
+--- Getting started with ulf.lib.conf:
+---   1. Define your configuration schema using `ulf.lib.conf.ctable`.
+---   2. Wrap it into a `ConfigBlock` to add validation, fallback, and hook support.
+---   3. Access fields within your config table, and rely on fallbacks and defaults where necessary.
+---   4. Use |ulf.lib.conf.schema| for schema-level configurations and |ulf.lib.conf.field| for individual field setup.
+---   5. Set up hooks and fallback logic as needed within `ConfigBlock`.
+---
+--- Below is an overview of the `ulf.lib.conf` architecture:
+--- <pre>
+--- ┌─────────────────────────────────────────────────────────┐
+--- │ ┌──────────┐                                            │
+--- │ │ Config   │      ┌────────────┐    ┌──────────┐        │
+--- │ │ Block    │──▶   │ Field      │───▶│ Schema   │        │
+--- │ │          │      │ Definitions│    │ Functions│        │
+--- │ └──┬───────┘      └────────────┘    └──────────┘        │
+--- │    │ Hooks +      ┌────────────┐     ▲                  │
+--- │    │ Fallbacks    │ Validation │     └───────────┐      │
+--- │    │ Applied      └──────▲─────┘                 │      │
+--- │    ▼                     │                       │      │
+--- │ ┌────────────────────┐   │       ┌────────────┐  │      │
+--- │ │Default + Custom    │   │       │Field Access│◀─┘      │
+--- │ │Fields, Descriptions│           │Utilities   │         │
+--- │ └────────────────────┘           └────────────┘         │
+--- │              ulf.lib.conf architecture                  │
+--- └─────────────────────────────────────────────────────────┘
+---
+--- Main components of `ulf.lib.conf`:
+---   1 `ctable`: Defines hierarchical configuration tables with default values and descriptions.
+---   2 `ConfigBlock`: Manages configuration blocks that support field validation, fallbacks, and hooks.
+---   3 `schema`: Schema utilities for managing hierarchical table operations, such as nested lookups and table walking.
+---   4 `field`: Definitions of individual config fields with support for data types, descriptions, and default values.
+--- </pre>
+---
+--- More documentation on `ulf.lib.conf` can be found in:
+--- <pre>
+--- https://github.com/ulf-project/ulf.lib
+---
+---   :h ulf.lib.conf.ctable
+---   :h ulf.lib.conf.ConfigBlock
+---   :h ulf.lib.conf.schema
+---   :h ulf.lib.conf.field
+---   :h ulf.lib.conf.util
+--- </pre>
+---
+--- Example:
+--- <code=lua>
+---
+--- local ctable = require("ulf.lib.conf.schema").ctable
+---
+--- local severity_to_number = function(severity_name)
+---   local smap = {
+---     trace = 0,
+---     debug = 1,
+---     info = 2,
+---     warn = 3,
+---     error = 4,
+---     off = 5,
+---   }
+---
+---   return smap[severity_name]
+--- end
+---
+--- local Schema = ctable({
+---   config = ctable({
+---
+---     global = ctable({
+---
+---       severity = {
+---         "debug",
+---         [[Global severity level. This is a last resort value]],
+---         hook = function(v)
+---           return severity_to_number(v)
+---         end,
+---       },
+---
+---       default_logger = {
+---         "default",
+---         [[
+---         This value defines the default logger when no logger is
+---         explicitely addressed.
+---         ]],
+---       },
+---     }, [[Global settings have presedence over local settings]]),
+---
+---     formatter = ctable({
+---       line = ctable({
+---
+---         custom_formatter = {
+---           nil,
+---           [[Option: a function which is called and returns a formatted line]],
+---           type = "function",
+---         },
+---
+---         app_name_maxlen = {
+---           10,
+---           [[Length of the application name in an output line.]],
+---         },
+---
+---         filename = {
+---           function(v) end,
+---           [[Returns the formatted filename]],
+---         },
+---       }, [[Settings for formatting line output.]]),
+---     }, [[Formatter settings]]),
+---
+---     channels = ctable({
+---       stdout = ctable({
+---         name = "stdout",
+---         enabled = {
+---           true,
+---           [[enables or disables this channel]],
+---         },
+---
+---         severity = {
+---           "debug",
+---           [[default channel severity level]],
+---           type = "number",
+---           fallback = "config.global.severity",
+---           hook = function(v)
+---             return severity_to_number(v)
+---           end,
+---         },
+---       }, [[Settings for the 'stdout' channel]]),
+---
+---       fs = ctable({
+---
+---         name = "fs",
+---         enabled = {
+---           true,
+---           [[enables or disables this channel]],
+---         },
+---
+---         severity = {
+---           "debug",
+---           [[default channel severity level]],
+---         },
+---       }, [[Settings for the 'fs' channel]]),
+---     }, [[Channel settings]]),
+---   }, [[config root]]),
+--- }, [[defaults node]])
+---
+--- </code>
+---
+---@brief ]]
+
+---@class ulf.lib.conf
+local _ = {}
+
+_.block = require("ulf.lib.conf.block")
+_.util = require("ulf.lib.conf.util")
+_.schema = require("ulf.lib.conf.schema")
+_.nodes = require("ulf.lib.conf.nodes")
+_.field = require("ulf.lib.conf.field")
+_.NIL = require("ulf.lib.conf.block").NIL
+
+return _
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/init.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/nodes.lua
+
+---@class ulf.lib.conf.nodes
+local M = {}
+
+local split = require("ulf.lib.string.splitter").split
+local tbl_get = require("ulf.lib.table.tbl_lib").tbl_get
+local field = require("ulf.lib.conf.field")
+local is_cfield_spec = field.is_cfield_spec
+local parse_cfield = field.parse_cfield
+
+local is_ctable = require("ulf.lib.conf.util").is_ctable
+
+local unpack = table.unpack or unpack
+
+local make_message = require("ulf.lib.error").make_message
+
+local H = {}
+
+---TODO: use this func also for walk methods
+---
+--- Constructs a node structure for consistent iteration in pairs and walk functions
+---@param obj ulf.lib.conf.ctable
+---@param key string
+---@param parent_path? string
+---@return ulf.lib.conf.ctable_iter_node
+function H.get_node(obj, key, parent_path)
+	---@type ulf.lib.conf.cfield
+	local node = obj._values[key]
+	return {
+		key = key,
+		value = node and node.value,
+		description = node and node.description,
+		is_ctable = is_ctable(obj),
+		parent = parent_path,
+		path = parent_path and parent_path ~= "" and parent_path .. "." .. key or key,
+	}
+end
+
+---comment
+---@param parent string[]
+---@param key string
+---@return string[]
+H.new_childs = function(parent, key)
+	local child_nodes = { unpack(parent) }
+	table.insert(child_nodes, key)
+	return child_nodes
+end
+
+---@param node ulf.lib.conf.ctable
+---@param parent string[]
+---@param fn ulf.lib.conf.ctable_walk_fn
+H.walk = function(node, parent, fn)
+	assert(
+		type(fn) == "function",
+		make_message({ "ulf.lib.conf.schema", "walk" }, "fn must be a function. got=%s", tostring(fn))
+	)
+
+	local parent_path = table.concat(parent, ".")
+	for key, value in pairs(node._values) do
+		---@type string
+		local desc = value.description
+		if type(value) == "table" and not desc then
+			---@type string
+			desc = node._values[key]._descriptions._self
+		end
+
+		-- only nodes which have a desc, other nodes are just table values
+		if desc then
+			fn({
+				path = parent_path ~= "" and parent_path .. "." .. key or key,
+				description = desc,
+				is_ctable = is_ctable(value),
+				key = key,
+				parent = parent_path,
+				value = value,
+			})
+		end
+
+		if is_ctable(value) then
+			-- Create a new path for child nodes. Copy not REF!
+			local child_nodes = H.new_childs(parent, key)
+			H.walk(value, child_nodes, fn)
+		end
+	end
+end
+
+---@param node ulf.lib.conf.ctable
+---@param parent string[]
+---@param fn ulf.lib.conf.ctable_walk_fn
+H.walk_post_order = function(node, parent, fn)
+	local parent_path = table.concat(parent, ".")
+	-- Traverse child nodes first
+	for key, value in pairs(node._values) do
+		if is_ctable(value) then
+			-- Create a new path for the child node and recursively traverse it
+			local child_path = H.new_childs(parent, key)
+
+			-- Perform post-order traversal on the child node
+			H.walk_post_order(value, child_path, fn)
+		end
+
+		-- FIXME: use H.get_node
+		--
+		-- After all children of the current node have been processed, apply the callback
+		local data = {
+			path = parent_path ~= "" and parent_path .. "." .. key or key,
+			key = key,
+			value = value,
+			is_ctable = is_ctable(value),
+			level = #parent + 1,
+			parent = table.concat(parent, "."),
+			description = node._values[key] and node._values[key].description or "",
+		}
+		fn(data)
+	end
+end
+
+--- Iterates over all defined config fields.
+---@param obj ulf.lib.conf.ctable
+---@param ipairs_opts? ulf.lib.conf.ctable_ipairs_opts
+---@return function
+---@return string[]
+---@return integer
+H.ipairs = function(obj, ipairs_opts)
+	ipairs_opts = ipairs_opts or {}
+	-- Create a list to store ordered nodes
+	local temp_list = {}
+
+	-- Use the correct ordering
+	local source_keys = ipairs_opts and ipairs_opts.order or obj._order or obj._keys
+	for _, k in ipairs(source_keys) do
+		local _field = obj._values[k]
+		-- Only add fields with a set value and description
+		if _field and _field.description then
+			table.insert(temp_list, H.get_node(obj, k))
+		end
+	end
+
+	-- Custom iterator over the ordered list
+	---comment
+	---@param a table
+	---@param i number
+	local function iter(a, i)
+		i = i + 1
+		if i <= #a then
+			return i, a[i]
+		end
+	end
+
+	return iter, temp_list, 0
+end
+
+---@class ulf.lib.conf.ctable_opts
+---@field order? string[] @the order of config keys when iterating over the table
+---@field description? string @description for this table
+
+---@alias ulf.lib.conf.ctable_value {[1]:any,[2]:string}
+---@alias ulf.lib.conf.ctable_spec table<string,ulf.lib.conf.ctable_value>
+
+--- Returns a table which is supposed to be used as a config
+--- table. Each key is associated with a value and a description.
+---@param tbl? table
+---@param opts? ulf.lib.conf.ctable_opts|string @options for this ctable or just a string as a description
+M.ctable = function(tbl, opts)
+	---@type string
+	local description
+	if type(opts) == "string" then
+		description = opts
+	elseif type(opts) == "table" then
+		description = opts.description
+	end
+
+	local mt = {
+		---@param t ulf.lib.conf.ctable
+		---@param k string
+		---@param v ulf.lib.conf.ctable_value|any
+		__newindex = function(t, k, v)
+			t._keys[#t._keys + 1] = k
+			if is_cfield_spec(v) then
+				t._values[k] = parse_cfield(k, v)
+			else
+				t._values[k] = v
+			end
+		end,
+
+		__index = function(t, k)
+			---@type table<string,ulf.lib.conf.cfield>
+			local values = rawget(t, "_values")
+			local v = values[k]
+			if v and v.fallback then
+				---@type string[]
+				local nodes
+				if v.fallback:match("%.") then
+					nodes = split(v.fallback, ".", { plain = true })
+				else
+					nodes = { v.fallback }
+				end
+
+				v = tbl_get(values, unpack(nodes))
+
+				assert(
+					type(v) == "table",
+					make_message(
+						{ "ulf.lib.conf.schema", "__index" },
+						"invalid fallback field '%s' for key '%s'. Make sure the field is defined in the schema.",
+						tostring(v.fallback),
+						tostring(v.key)
+					)
+				)
+			end
+			if v then
+				if v.hook then
+					return v.hook(v.value)
+				elseif v.value then
+					return v.value
+				end
+				return v
+			end
+		end,
+		__class = {
+			name = "ctable",
+		},
+	}
+	---@class ulf.lib.conf.ctable_iter_node
+	---@field path string
+	---@field parent string
+	---@field key string
+	---@field value any
+	---@field description string
+	---@field is_ctable boolean
+	---@field level? number
+
+	---@alias ulf.lib.conf.ctable_walk_fn fun(node:ulf.lib.conf.ctable_iter_node)
+
+	---@class ulf.lib.conf.ctable
+	---@field _values table<string,any>
+	---@field _keys string[]
+	---@field _order string[]
+	---@field _parent? string
+	---@field walk_post_order fun(fn:ulf.lib.conf.ctable_walk_fn )
+	---@field walk fun(fn:ulf.lib.conf.ctable_walk_fn )
+	local obj = {
+		_keys = {},
+		_values = {},
+		_order = type(opts) == "table" and opts.order,
+		_descriptions = {
+			_self = description,
+		},
+	}
+
+	---@param fn ulf.lib.conf.ctable_walk_fn
+	obj.walk = function(fn)
+		H.walk(obj, {}, fn)
+	end
+
+	---@param fn ulf.lib.conf.ctable_walk_fn
+	obj.walk_post_order = function(fn)
+		H.walk_post_order(obj, {}, fn)
+	end
+
+	---@alias ulf.lib.conf.ctable_ipairs_opts {order:string[]?}
+
+	---@param ipairs_opts ulf.lib.conf.ctable_ipairs_opts
+	---@return function,string[],integer
+	obj.ipairs = function(ipairs_opts)
+		return H.ipairs(obj, ipairs_opts)
+	end
+
+	obj = setmetatable(obj, mt)
+
+	if tbl then
+		for key, value in
+			pairs(tbl --[[@as ulf.lib.conf.ctable_spec ]])
+		do
+			obj[key] = value
+		end
+	end
+	return obj
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/nodes.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/schema.lua
+
+---@class ulf.lib.conf.schema
+local M = {}
+
+local make_message = require("ulf.lib.error").make_message
+local ctable = require("ulf.lib.conf.nodes").ctable
+local create_class = require("ulf.lib.conf.class").create_class
+local ClassGenerator = require("ulf.lib.conf.class").ClassGenerator
+local util = require("ulf.lib.conf.util")
+local is_ctable = util.is_ctable
+
+---@class ulf.lib.conf.SchemaObject
+---@field class ulf.lib.conf.ConfigClass
+---@field tree {root:ulf.lib.conf.ctable}
+---@overload fun(name:string,config:ulf.lib.conf.ctable):ulf.lib.conf.SchemaObject
+local SchemaObject = setmetatable({}, {
+	__call = function(t, ...)
+		return t.new(...)
+	end,
+})
+M.SchemaObject = SchemaObject
+
+---@type table<string,fun(t:ulf.lib.conf.SchemaObject,k:string?):any>
+SchemaObject._accessors = {}
+
+---@return ulf.lib.conf.ConfigClass
+SchemaObject._accessors.class = function(t, _)
+	-- local class = ClassGenerator.new("Config", t.tree):bake()
+	local class = create_class("Config", t.tree)
+	rawset(t, "class", class)
+	return class
+end
+
+---@param name string
+---@param config ulf.lib.conf.ctable
+---@param opts? ulf.lib.conf.ctable_opts|string @options for this ctable or just a string as a description
+---@return ulf.lib.conf.SchemaObject
+function SchemaObject.new(name, config, opts)
+	assert(
+		is_ctable(config),
+		make_message({ "ulf.lib.conf.schema.SchemaObject", "new" }, "config must be a ctable. got=%s", tostring(config))
+	)
+
+	return setmetatable({
+		name = name,
+		tree = ctable({
+			root = config,
+		}, opts),
+	}, {
+		__index = function(t, k)
+			local v = rawget(t, k) or rawget(SchemaObject, k)
+			if v ~= nil then
+				return v
+			end
+			local accessor = SchemaObject._accessors[k]
+			if type(accessor) == "function" then
+				return accessor(t, k)
+			end
+		end,
+		__class = {
+			name = "schema",
+		},
+	})
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/schema.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/util.lua
+
+---@class ulkf.lib.conf.util
+local M = {}
+
+---comment
+---@param t table
+---@param name string
+---@return boolean
+local function _is_type(t, name)
+	local mt = getmetatable(t)
+	if mt then
+		return mt.__class and mt.__class.name and mt.__class.name == name
+	end
+	return false
+end
+
+---comment
+---@param t table
+---@return boolean
+function M.is_ctable(t)
+	return _is_type(t, "ctable")
+end
+
+---comment
+---@param t table
+---@return boolean
+function M.is_config_block(t)
+	return _is_type(t, "ConfigBlock")
+end
+
+---comment
+---@param t table
+---@return boolean
+function M.is_cfield(t)
+	return _is_type(t, "cfield")
+end
+
+---@param t table
+---@return boolean
+function M.is_schema(t)
+	return _is_type(t, "schema")
+end
+
+---@param t table
+---@return boolean
+function M.is_config_class(t)
+	return _is_type(t, "config_class")
+end
+
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./lua/ulf/lib/conf/util.lua
+
+<ASSISTANT_UPDATE>
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/assertions.lua
+
+-- module will not return anything, only register assertions with the main assert engine
+
+-- assertions take 2 parameters;
+-- 1) state
+-- 2) arguments list. The list has a member 'n' with the argument count to check for trailing nils
+-- 3) level The level of the error position relative to the called function
+-- returns; boolean; whether assertion passed
+
+local ulf = {
+	lib = {
+		conf = {
+			util = require("ulf.lib.conf.util"),
+		},
+	},
+}
+local assert = require("luassert.assert")
+local luassert_util = require("luassert.util")
+local tinsert = luassert_util.tinsert
+local Util = require("ulf.test.luassert.util")
+local set_failure_message = Util.set_failure_message
+local assertions = {}
+
+---@param state table
+---@param arguments luassert.format
+---@param level number
+assertions.Block = function(state, arguments, level)
+	tinsert(arguments, 3, "type " .. "Block")
+	arguments.nofmt = arguments.nofmt or {}
+	arguments.nofmt[3] = true
+
+	return Util.obj_assertion(state, arguments, level)
+end
+
+---@param state table
+---@param arguments luassert.format
+---@param level number
+assertions.is_ctable = function(state, arguments, level)
+	tinsert(arguments, 2, "expected type " .. "ctable")
+	arguments.nofmt = arguments.nofmt or {}
+	arguments.nofmt[2] = true
+
+	set_failure_message(state, arguments[2])
+	return arguments.n > 1 and ulf.lib.conf.util.is_ctable(arguments[1])
+end
+
+---@param state table
+---@param arguments luassert.format
+---@param level number
+assertions.kind = function(state, arguments, level)
+	P({
+		"kind>>>>>>>>>>>>>>>>>",
+		state = state,
+		arguments = arguments,
+		level = level,
+	})
+	local payload = rawget(state, "payload")
+	arguments = arguments or {}
+	tinsert(arguments, 2, "expected type " .. "ConfigBlock")
+	arguments.nofmt = arguments.nofmt or {}
+	arguments.nofmt[2] = true
+
+	set_failure_message(state, arguments[2])
+	return arguments.n > 1 and ulf.lib.conf.util.is_config_block(payload)
+end
+
+local function set_config_block(state, arguments, level)
+	P({
+		"set_config_block>>>>>>>>>>>>>>>>>",
+		state = state,
+		arguments = arguments,
+		level = level,
+	})
+	if arguments then
+		state.payload = arguments[1]
+		if arguments[2] ~= nil then
+			state.failure_message = arguments[2]
+		end
+	end
+end
+
+assert:register("modifier", "ConfigBlock", set_config_block)
+assert:register(
+	"assertion",
+	"is_ctable",
+	assertions.is_ctable,
+	"assertion.is_ctable.positive",
+	"assertion.is_ctable.negative"
+)
+assert:register("assertion", "kind", assertions.kind, "assertion.kind.positive", "assertion.kind.negative")
+assert:register("assertion", "Block", assertions.Block, "assertion.Block.positive", "assertion.Block.negative")
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/assertions.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/block_spec.lua
+
+---@diagnostic disable:invisible
+
+local assert = require("luassert")
+require("spec.tests.ulf.lib.conf.assertions")
+local H = require("spec.tests.ulf.lib.conf.helpers")
+local index_of = H.index_of
+
+describe("#ulf.lib.conf.block", function()
+	local Hook = require("ulf.lib.conf.block").Hook
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+	local ctable = require("ulf.lib.conf.nodes").ctable
+	local util = require("ulf.lib.conf.util")
+
+	describe("ConfigBlock", function()
+		describe("called with invalid args", function()
+			it("fails when with a message", function()
+				assert.has_error(function()
+					local _ = ConfigBlock() ---@diagnostic disable-line: missing-parameter
+				end)
+			end)
+		end)
+		describe("called with defaults as arg1", function()
+			local block = ConfigBlock(ctable({
+				{
+					enabled = {
+						true,
+						[[
+            Enables or disables the item
+
+            Available options are:
+            - true (default)
+            - false
+            ]],
+					},
+				},
+			}))
+			it("creates a block when called", function()
+				-- assert.ConfigBlock.kind(block)
+				assert(util.is_config_block(block))
+				assert.Block(block._, {
+					hooks = { "table" },
+					data = { "table" },
+					defaults = { "table" },
+				})
+			end)
+
+			it("has a ctable as defaults", function()
+				assert.is_ctable(block._.defaults)
+			end)
+		end)
+		describe("called with defaults as arg1 and config.data", function()
+			local block = ConfigBlock(
+				ctable({
+					severity = {
+						"debug",
+						[[severity level]],
+					},
+				}),
+				{}
+			)
+			it("sets a key if defined in a ctable", function()
+				block({ severity = "info" })
+				assert.equal("info", block._.data.severity)
+			end)
+			it("fails if a key is not defined", function()
+				assert.error_matches(function()
+					block({ enabled = true })
+				end, "^%[ulf%.lib%.conf%.ConfigBlock%]%.__newindex: Error: invalid key: enabled")
+			end)
+		end)
+
+		describe("called with defaults as arg1 and config.hooks", function()
+			local hook_fn = function(v)
+				if v == "info" then
+					return 2
+				end
+			end
+
+			local block = ConfigBlock(
+				ctable({
+					severity = {
+						"debug",
+						[[severity level]],
+					},
+				}),
+				{
+					hooks = {
+						Hook("severity", hook_fn),
+					},
+				}
+			)
+
+			it("creates a block with hooks", function()
+				assert(block)
+				assert.Table(block._.hooks)
+				assert.Table(block._.hooks.severity)
+
+				assert.equal("severity", block._.hooks.severity.key)
+				assert.equal(hook_fn, block._.hooks.severity.transform)
+			end)
+
+			it("applies a hook", function()
+				block({ severity = "info" })
+				assert.equal(2, block._.data.severity)
+			end)
+		end)
+		describe("ConfigBlock with fallback and hooks", function()
+			local severity_hook = function(v)
+				return H.severity_to_number(v)
+			end
+
+			-- Create a ctable with severity and fallback fields
+			local defaults = ctable({
+				global_severity = {
+					"info", -- global default severity
+					[[This is the default global severity level]],
+					hook = severity_hook,
+				},
+				severity = {
+					[[Config-specific severity level with fallback to global]],
+					type = "number",
+					fallback = "global_severity",
+					hook = severity_hook,
+				},
+
+				dummy = {
+					"nothing", -- global default severity
+					[[dummy field]],
+				},
+			})
+
+			it("returns the value from config with hook applied when config.severity is set", function()
+				local config = ConfigBlock(defaults)
+				config({ severity = "warn" })
+				-- Here, `severity_hook` should convert "warn" to its corresponding number value
+				assert.equal(3, config.severity)
+			end)
+
+			describe("returns the fallback value from ctable with hook applied", function()
+				it("when config.severity is not set", function()
+					local config = ConfigBlock(defaults)
+					-- Should return the fallback (converted by the hook) from global_severity, which is "info" => 2
+					assert.equal(2, config.severity)
+				end)
+
+				if false then
+					it("when a writing an empty table", function()
+						local config = ConfigBlock(defaults)
+
+						config({ severity = "warn" })
+						-- Should return the fallback (converted by the hook) from global_severity, which is "info" => 2
+						assert.equal(3, config.severity)
+
+						config({})
+
+						assert.equal(2, config.severity)
+					end)
+				end
+
+				it("when deleting a value for a field", function()
+					local config = ConfigBlock(defaults)
+
+					config({ severity = "warn", dummy = "nonsense" })
+					-- Should return the fallback (converted by the hook) from global_severity, which is "info" => 2
+					assert.equal(3, config.severity)
+					assert.equal("nonsense", config.dummy)
+
+					config({ severity = ConfigBlock.NIL })
+
+					assert.equal("nonsense", config.dummy)
+					assert.equal(2, config.severity)
+				end)
+			end)
+		end)
+	end)
+end)
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/block_spec.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/class_spec.lua
+
+---@diagnostic disable:invisible
+
+local assert = require("luassert")
+require("spec.tests.ulf.lib.conf.assertions")
+local TestSchema = require("spec.tests.ulf.lib.conf.test_schema")
+local H = require("spec.tests.ulf.lib.conf.helpers")
+local index_of = H.index_of
+
+describe("#ulf.lib.conf", function()
+	local Hook = require("ulf.lib.conf.block").Hook
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+	local ctable = require("ulf.lib.conf.nodes").ctable
+	local util = require("ulf.lib.conf.util")
+	describe("create_class", function()
+		local create_class = require("ulf.lib.conf.class").create_class
+
+		describe("block", function()
+			it("generates a config class", function()
+				---@type {Config:{}}
+				local class = create_class("Config", TestSchema.client)
+				assert.Table(class)
+				assert.Table(class.Config)
+				assert.is_callable(class.Config)
+
+				---@type table
+				local config = class.Config()
+				assert(config)
+			end)
+		end)
+		describe("config instance", function()
+			---
+			---@type {Config:{}}
+			local class = create_class(
+				"Config",
+				ctable({
+					root = TestSchema.client,
+				}, [[schema root]])
+			)
+
+			it("non ConfigFields behave like normal table keys", function()
+				---@type table
+				local config = class.Config()
+				assert.equal("stdout", config.channels.stdout.name)
+			end)
+
+			it("applies hooks when a cfield has a config", function()
+				print(">>>>>>>>>>>>>>>>>> start")
+				---@type table
+				local config = class.Config()
+				P("class", class)
+
+				config.global({
+					severity = "info",
+				})
+
+				assert.equal(2, config.global.severity)
+
+				print(">>>>>>>>>>>>>>>>>> end")
+			end)
+			if false then
+				it("applies hooks when default value is accessed", function()
+					---@type table
+					local config = class.Config()
+
+					assert.equal(1, config.global.severity)
+				end)
+
+				it("has the expected config blocks", function()
+					---@type table
+					local config = class.Config()
+
+					config.global({
+						severity = "debug",
+						default_logger = "logger1",
+					})
+
+					assert.equal(1, config.global.severity)
+					assert.equal("logger1", config.global.default_logger)
+
+					config.formatter.line({
+						app_name_maxlen = 20,
+
+						filename = function(v)
+							return v
+						end,
+					})
+					assert.equal(20, config.formatter.line.app_name_maxlen)
+					assert.equal("myfile", config.formatter.line.filename("myfile"))
+
+					config.channels.stdout({
+						enabled = false,
+					})
+					-- P(config.nodes.channels.stdout)
+					assert.equal(false, config.channels.stdout.enabled)
+
+					print(">>>>>>>>>>>>> END")
+				end)
+
+				it("returns the default value if no value is configured", function()
+					---@type table
+					local config = class.Config()
+					--
+					assert.equal(1, config.global.severity)
+					assert.equal("default", config.global.default_logger)
+					assert.equal(10, config.formatter.line.app_name_maxlen)
+				end)
+				it("fails with an error if field does not exist", function()
+					---@type table
+					local config = class.Config()
+					--
+					assert.has_error(function()
+						assert.equal("debug", config.global.enabled)
+					end, "[ulf.lib.conf.ConfigBlock].__index: Error: no such config field 'enabled'")
+				end)
+			end
+		end)
+	end)
+end)
+-- describe("#ulf.lib.conf", function()
+-- 	local Hook = require("ulf.lib.conf.block").Hook
+-- 	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+-- 	local ctable = require("ulf.lib.conf.nodes").ctable
+-- 	local util = require("ulf.lib.conf.util")
+-- 	describe("ClassGenerator", function()
+-- 		local ClassGenerator = require("ulf.lib.conf.class").ClassGenerator
+-- 		local generator = ClassGenerator.new("Config", H.Defaults)
+-- 		describe("new", function()
+-- 			it("create an instance", function()
+-- 				assert(generator)
+-- 			end)
+-- 		end)
+--
+-- 		describe("block", function()
+-- 			it("generates a config class", function()
+-- 				---@type {Config:{}}
+-- 				local class = generator:bake()
+-- 				assert.Table(class)
+-- 				assert.Table(class.Config)
+-- 				assert.is_callable(class.Config)
+--
+-- 				---@type table
+-- 				local config = class.Config()
+-- 				assert(config)
+-- 			end)
+-- 		end)
+-- 		describe("config instance", function()
+-- 			---
+-- 			---@type {Config:{}}
+-- 			local class = generator:bake()
+--
+-- 			it("non ConfigFields behave like normal table keys", function()
+-- 				---@type table
+-- 				local config = class.Config()
+-- 				assert.equal("stdout", config.channels.stdout.name)
+-- 			end)
+--
+-- 			it("applies hooks when a cfield has a config", function()
+-- 				---@type table
+-- 				local config = class.Config()
+--
+-- 				config.global({
+-- 					severity = "info",
+-- 				})
+--
+-- 				assert.equal(2, config.global.severity)
+-- 			end)
+-- 			it("applies hooks when default value is accessed", function()
+-- 				---@type table
+-- 				local config = class.Config()
+--
+-- 				assert.equal(1, config.global.severity)
+-- 			end)
+--
+-- 			it("has the expected config blocks", function()
+-- 				---@type table
+-- 				local config = class.Config()
+--
+-- 				config.global({
+-- 					severity = "debug",
+-- 					default_logger = "logger1",
+-- 				})
+--
+-- 				assert.equal(1, config.global.severity)
+-- 				assert.equal("logger1", config.global.default_logger)
+--
+-- 				config.formatter.line({
+-- 					app_name_maxlen = 20,
+--
+-- 					filename = function(v)
+-- 						return v
+-- 					end,
+-- 				})
+-- 				assert.equal(20, config.formatter.line.app_name_maxlen)
+-- 				assert.equal("myfile", config.formatter.line.filename("myfile"))
+--
+-- 				config.channels.stdout({
+-- 					enabled = false,
+-- 				})
+-- 				-- P(config.nodes.channels.stdout)
+-- 				assert.equal(false, config.channels.stdout.enabled)
+--
+-- 				print(">>>>>>>>>>>>> END")
+-- 			end)
+--
+-- 			it("returns the default value if no value is configured", function()
+-- 				---@type table
+-- 				local config = class.Config()
+-- 				--
+-- 				assert.equal(1, config.global.severity)
+-- 				assert.equal("default", config.global.default_logger)
+-- 				assert.equal(10, config.formatter.line.app_name_maxlen)
+-- 			end)
+-- 			it("fails with an error if field does not exist", function()
+-- 				---@type table
+-- 				local config = class.Config()
+-- 				--
+-- 				assert.has_error(function()
+-- 					assert.equal("debug", config.global.enabled)
+-- 				end, "[ulf.lib.conf.ConfigBlock].__index: Error: no such config field 'enabled'")
+-- 			end)
+-- 		end)
+-- 	end)
+-- end)
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/class_spec.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/field_spec.lua
+
+describe("#ulf.lib.conf.field", function()
+	local field = require("ulf.lib.conf.field")
+
+	describe("cfield", function()
+		it("creates a cfield with all attributes", function()
+			local opts = {
+				value = "some_value",
+				description = "A test field",
+				type = "string",
+				fallback = "default.fallback",
+				hook = function(v)
+					return v
+				end,
+			}
+			local f = field.cfield(opts)
+
+			assert.equal("some_value", f.value)
+			assert.equal("A test field", f.description)
+			assert.equal("string", f.type)
+			assert.equal("default.fallback", f.fallback)
+			assert.is_function(f.hook)
+		end)
+
+		it("fails when opts is not a table", function()
+			assert.has_error(
+				function()
+					field.cfield("not_a_table")
+				end,
+				"[ulf.lib.conf.field].cfield: opts must be a table with {optional,value,type,description}. got=not_a_table"
+			)
+		end)
+	end)
+
+	describe("is_cfield_spec", function()
+		it("returns true for a valid cfield spec with value and description", function()
+			assert(field.is_cfield_spec({ "value", "description" }))
+		end)
+
+		it("returns true for a cfield spec with only a description and type", function()
+			assert(field.is_cfield_spec({ "description", type = "string" }))
+		end)
+
+		it("returns false for an invalid cfield spec without type or value", function()
+			assert.False(field.is_cfield_spec({ "description" }))
+		end)
+
+		it("returns false if the table has a metatable", function()
+			local t = setmetatable({}, {})
+			assert.is_false(field.is_cfield_spec(t))
+		end)
+	end)
+
+	describe("parse_cfield", function()
+		it("parses a field with value and description", function()
+			local f = field.parse_cfield("test_key", { "value", "A test description" })
+			assert.equal("value", f.value)
+			assert.equal("A test description", f.description)
+			assert.equal("string", f.type)
+		end)
+
+		it("parses a field with only description and type", function()
+			local f = field.parse_cfield("test_key", { "A test description", type = "number" })
+			assert.equal(nil, f.value)
+			assert.equal("A test description", f.description)
+			assert.equal("number", f.type)
+		end)
+
+		it("fails to parse if no type is provided for fields without a value", function()
+			assert.has_error(function()
+				field.parse_cfield("test_key", { "Missing type for optional field" })
+			end)
+		end)
+		it("fails to parse if type is invalid", function()
+			assert.has_error(function()
+				field.parse_cfield("test_key", { "Invalid type for optional field", type = "not_a_type" })
+			end)
+		end)
+
+		it("fails to parse if description is not a string", function()
+			assert.has_error(function()
+				field.parse_cfield("test_key", { "severity", 1 })
+			end)
+		end)
+
+		it("fails to parse if hook is set and not a function", function()
+			assert.has_error(function()
+				field.parse_cfield("test_key", { "severity", "some desc", hook = "not_a_hook" })
+			end)
+		end)
+
+		it("fails to parse if fallback is set and not a string|function", function()
+			assert.has_error(function()
+				field.parse_cfield("test_key", { "severity", "some desc", fallback = 1 })
+			end)
+		end)
+	end)
+end)
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/field_spec.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/helpers.lua
+
+local M = {}
+local ulf = {
+	lib = require("ulf.lib"),
+}
+local ctable = require("ulf.lib.conf.nodes").ctable
+
+---comment
+---@param severity_name string
+M.severity_to_number = function(severity_name)
+	local smap = {
+		trace = 0,
+		debug = 1,
+		info = 2,
+		warn = 3,
+		error = 4,
+		off = 5,
+	}
+
+	return smap[severity_name]
+end
+
+---@class ulf.log.Defaults : ulf.lib.conf.ctable
+local Defaults = ctable()
+M.Defaults = Defaults
+
+M.Defaults = ctable({
+	config = ctable({
+
+		global = ctable({
+			severity = {
+				"debug",
+				[[Global severity level. This is a last resort value]],
+				hook = function(v)
+					return M.severity_to_number(v)
+				end,
+			},
+			default_logger = {
+				"default",
+				[[
+  		  This value defines the default logger when no logger is
+  		  explicitely addressed.
+  		  ]],
+			},
+		}, [[Global settings have presedence over local settings]]),
+
+		formatter = ctable({
+			line = ctable({
+				custom_formatter = {
+					nil,
+					[[Option: a function which is called and returns a formatted line]],
+					type = "function",
+				},
+				app_name_maxlen = {
+					10,
+					[[Length of the application name in an output line.]],
+				},
+				filename = {
+					function(v) end,
+					[[Returns the formatted filename]],
+				},
+				max_length = {
+					400,
+					[[Available options are: 400 (default)]],
+				},
+			}, [[Settings for formatting line output.]]),
+		}, [[Formatter settings]]),
+
+		channels = ctable({
+			stdout = ctable({
+				name = "stdout",
+				enabled = {
+					true,
+					[[enables or disables this channel]],
+				},
+
+				severity = {
+					"debug",
+					[[default channel severity level]],
+					type = "number",
+					fallback = "config.global.severity",
+					hook = function(v)
+						return M.severity_to_number(v)
+					end,
+				},
+			}, [[Settings for the 'stdout' channel]]),
+
+			fs = ctable({
+
+				name = "fs",
+				enabled = {
+					true,
+					[[enables or disables this channel]],
+				},
+
+				severity = {
+					"debug",
+					[[default channel severity level]],
+				},
+			}, [[Settings for the 'fs' channel]]),
+		}, [[Channel settings]]),
+	}, [[config root]]),
+}, [[defaults node]])
+
+function M.index_of(tbl, value)
+	for i, v in ipairs(tbl) do ---@diagnostic disable-line: no-unknown
+		if v == value then
+			return i
+		end
+	end
+	return nil -- Return nil if the value is not found
+end
+return M
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/helpers.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/nodes_spec.lua
+
+---@diagnostic disable:invisible
+
+local assert = require("luassert")
+require("spec.tests.ulf.lib.conf.assertions")
+local H = require("spec.tests.ulf.lib.conf.helpers")
+local index_of = H.index_of
+
+describe("#ulf.lib.conf.nodes", function()
+	local Hook = require("ulf.lib.conf.block").Hook
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+	local ctable = require("ulf.lib.conf.nodes").ctable
+	local util = require("ulf.lib.conf.util")
+	describe("ctable", function()
+		--
+		it("is a function", function()
+			assert.Function(ctable)
+		end)
+
+		describe("when called with no args", function()
+			it("returns a ctable", function()
+				local config = ctable()
+				config.config_field = { "some_val", "description" } ---@diagnostic disable-line: inject-field
+				assert(config)
+				assert.equal("config_field", config._keys[1])
+				assert.equal("some_val", config._values.config_field.value)
+				assert.equal("string", config._values.config_field.type)
+				assert.equal("description", config._values.config_field.description)
+			end)
+		end)
+
+		describe("spec", function()
+			describe("when called with a spec that has a value and a description", function()
+				it("creates a field", function()
+					local config = ctable({
+						config_field = {
+							"some_val",
+							[[This is a string field]],
+						},
+					})
+					assert(config)
+					assert.equal("some_val", config._values.config_field.value)
+					assert.equal("string", config._values.config_field.type)
+					assert.equal("This is a string field", config._values.config_field.description)
+				end)
+				it("descriptions are trimmed", function()
+					local config = ctable({
+						sorting_strategy = {
+							"descending",
+							[[
+            Determines the direction "better" results are sorted towards.
+          
+            Available options are:
+            - "descending" (default)
+            - "ascending"]],
+						},
+					})
+					assert(config)
+					assert.equal(
+						[[Determines the direction "better" results are sorted towards.
+
+Available options are:
+- "descending" (default)
+- "ascending"]],
+						config._values.sorting_strategy.description
+					)
+				end)
+
+				it("behaves like a normal table when addressing a key", function()
+					local config = ctable({
+						sorting_strategy = {
+							"descending",
+							[[Determines the direction "better" results are sorted towards.]],
+						},
+					})
+					assert.equal("descending", config.sorting_strategy)
+				end)
+			end)
+
+			describe("when called with a spec that has only a description and a type", function()
+				it("creates an optional field", function()
+					local config = ctable({
+						optional_key = {
+							[[This is an optional config field]],
+							type = "string",
+						},
+					})
+					assert(config)
+					assert.equal("string", config._values.optional_key.type)
+					assert.equal("This is an optional config field", config._values.optional_key.description)
+				end)
+
+				-- it("raises an error if type is missing", function()
+				-- 	assert.has_error(function()
+				-- 		ctable({
+				-- 			optional_key = {
+				-- 				[[This is an optional config field]],
+				-- 			},
+				-- 		})
+				-- 	end, "[ulf.lib.conf.ctable].__newindex: a type must be given for optional fields. got=nil")
+				-- end)
+			end)
+			describe("when fallback is present in a field it returns the fallback field", function()
+				it("creates an optional field", function()
+					-- print("??????????????????????? start")
+					local config = ctable({
+						global_severity = {
+							"debug",
+							[[This is a destination of a fallback]],
+						},
+
+						severity = {
+							fallback = "global_severity",
+							type = "string",
+							[[This is a field with a fallback]],
+						},
+					})
+					assert(config)
+					local v = config.severity
+					-- P({
+					-- 	"AAAAAAAAAAAA",
+					-- 	v = v,
+					-- })
+					assert.equal("debug", config.severity)
+					-- assert.equal("This is an optional config field", config._values.optional_key.description)
+					-- print("??????????????????????? end")
+				end)
+
+				-- it("raises an error if type is missing", function()
+				-- 	assert.has_error(function()
+				-- 		ctable({
+				-- 			optional_key = {
+				-- 				[[This is an optional config field]],
+				-- 			},
+				-- 		})
+				-- 	end, "[ulf.lib.conf.ctable].__newindex: a type must be given for optional fields. got=nil")
+				-- end)
+			end)
+		end)
+
+		describe("walk", function()
+			it("traverses the tree in level order", function()
+				local traversal_result = {}
+
+				H.Defaults.walk(function(node)
+					table.insert(traversal_result, node)
+				end)
+
+        -- stylua: ignore start
+				assert.equal("config", traversal_result[1].path)
+				assert.equal("config root", traversal_result[1].description)
+				assert.equal("config.channels", traversal_result[2].path)
+				assert.equal("Channel settings", traversal_result[2].description)
+				assert.equal("config.channels.stdout", traversal_result[3].path)
+				assert.equal("Settings for the 'stdout' channel", traversal_result[3].description)
+				assert.equal("config.channels.stdout.enabled", traversal_result[4].path)
+				assert.equal("enables or disables this channel", traversal_result[4].description)
+				assert.equal("config.channels.stdout.severity", traversal_result[5].path)
+				assert.equal("default channel severity level", traversal_result[5].description)
+				assert.equal("config.channels.fs", traversal_result[6].path)
+				assert.equal("Settings for the 'fs' channel", traversal_result[6].description)
+				assert.equal("config.channels.fs.enabled", traversal_result[7].path)
+				assert.equal("enables or disables this channel", traversal_result[7].description)
+				assert.equal("config.channels.fs.severity", traversal_result[8].path)
+				assert.equal("default channel severity level", traversal_result[8].description)
+				assert.equal("config.formatter", traversal_result[9].path)
+				assert.equal("Formatter settings", traversal_result[9].description)
+				assert.equal("config.formatter.line", traversal_result[10].path)
+				assert.equal("Settings for formatting line output.", traversal_result[10].description)
+				assert.equal("config.formatter.line.custom_formatter", traversal_result[11].path)
+				assert.equal("Option: a function which is called and returns a formatted line", traversal_result[11].description)
+				assert.equal("config.formatter.line.app_name_maxlen", traversal_result[12].path)
+				assert.equal("Length of the application name in an output line.", traversal_result[12].description)
+				assert.equal("config.formatter.line.filename", traversal_result[13].path)
+				assert.equal("Returns the formatted filename", traversal_result[13].description)
+				assert.equal("config.formatter.line.max_length", traversal_result[14].path)
+				assert.equal("Available options are: 400 (default)", traversal_result[14].description)
+				assert.equal("config.global", traversal_result[15].path)
+				assert.equal("Global settings have presedence over local settings", traversal_result[15].description)
+				assert.equal("config.global.severity", traversal_result[16].path)
+				assert.equal("Global severity level. This is a last resort value", traversal_result[16].description)
+				assert.equal("config.global.default_logger", traversal_result[17].path)
+				assert.equal("This value defines the default logger when no logger is\nexplicitely addressed.\n", traversal_result[17].description)
+				-- stylua: ignore end
+			end)
+		end)
+
+		describe("walk_post_order", function()
+			it("traverses the tree in post order", function()
+				local traversal_result = {}
+
+				H.Defaults.walk_post_order(function(node)
+					table.insert(traversal_result, node.key)
+				end)
+
+				-- Ensure the last node is the root
+				assert.is_true(traversal_result[#traversal_result] == "config")
+
+				-- Additional checks for specific order
+				local idx_global = index_of(traversal_result, "global")
+				local idx_formatter = index_of(traversal_result, "formatter")
+				local idx_channels = index_of(traversal_result, "channels")
+				local idx_config = index_of(traversal_result, "config")
+
+				assert.is_true(idx_global < idx_config) -- `global` is before `config`
+				assert.is_true(idx_formatter < idx_config) -- `formatter` is before `config`
+				assert.is_true(idx_channels < idx_config) -- `channels` is before `config`
+			end)
+		end)
+		describe("ctable pairs function", function()
+			it("iterates over ctable in defined order with only fields that have values", function()
+				-- Set up a ctable with ordered fields, some with and without values
+				local config = ctable({
+					first_field = { "value1", "First description" },
+					second_field = { nil, "Second description: This is an optional field", type = "boolean" },
+					third_field = { "value3", "Third description" },
+					fourth_field = { 42, "Fourth description" },
+				}, { order = { "first_field", "second_field", "third_field", "fourth_field" } })
+
+				local expected_pairs = {
+					{ key = "first_field", value = "value1", description = "First description" },
+					{
+						key = "second_field",
+						value = nil,
+						description = "Second description: This is an optional field",
+					},
+					{ key = "third_field", value = "value3", description = "Third description" },
+					{ key = "fourth_field", value = 42, description = "Fourth description" },
+				}
+
+				-- Collect results from pairs iterator
+				local results = {}
+				for _, node in
+					config:ipairs() --[[@as table<string,ulf.lib.conf.ctable_iter_node> ]]
+				do
+					table.insert(results, { key = node.key, value = node.value, description = node.description })
+				end
+
+				-- Check that only fields with values are included and order is preserved
+				assert.same(expected_pairs, results)
+			end)
+		end)
+	end)
+end)
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/nodes_spec.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/schema_spec.lua
+
+---@diagnostic disable:invisible
+
+local assert = require("luassert")
+require("spec.tests.ulf.lib.conf.assertions")
+local TestSchema = require("spec.tests.ulf.lib.conf.test_schema")
+local H = require("spec.tests.ulf.lib.conf.helpers")
+local index_of = H.index_of
+
+describe("#ulf.lib.conf.schema", function()
+	local Hook = require("ulf.lib.conf.block").Hook
+	local ConfigBlock = require("ulf.lib.conf.block").ConfigBlock
+	local ctable = require("ulf.lib.conf.nodes").ctable
+	local Schema = require("ulf.lib.conf.schema")
+	local util = require("ulf.lib.conf.util")
+	describe("SchemaObject", function()
+		describe("new", function()
+			--
+			it("creates a new SchemaObject", function()
+				local schema = Schema.SchemaObject.new("client", ctable({}))
+				assert(util.is_schema(schema))
+			end)
+		end)
+
+		describe("self.class", function()
+			it("returns a ConfigClass", function()
+				print(">>>>>>>>>>>>> start")
+				local schema = Schema.SchemaObject.new(
+					"client",
+					ctable({
+						enabled = {
+							true,
+							"description enabled",
+						},
+
+						name = {
+							"test",
+							"description name",
+						},
+					}, "schema root")
+				)
+				assert(util.is_schema(schema))
+
+				P("class", schema.class)
+				assert.Table(schema.class)
+				assert.is_callable(schema.class.Config)
+				assert(util.is_config_class(schema.class.Config))
+				print(">>>>>>>>>>>>> end")
+			end)
+		end)
+
+		describe("functional", function()
+			describe("when creating a Schema from TestSchema.client", function()
+				local schema = Schema.SchemaObject.new("client", TestSchema.client)
+				it("creates a new SchemaObject", function()
+					assert(util.is_schema(schema))
+				end)
+
+				it("tree has global.severity == 2", function()
+					assert.equal(2, schema.tree.root.global.severity)
+				end)
+
+				-- TODO: test structure like above
+			end)
+
+			describe("when creating a config instance", function()
+				local schema = Schema.SchemaObject.new("client", TestSchema.client)
+
+				it("does not fail ", function()
+					assert.has_no_error(function()
+						---@type ulf.lib.conf.ConfigClass
+						schema.class.Config()
+					end)
+				end)
+
+				it("has the correct data when configm is empty", function()
+					print(">>>>>>>>>>>>> START")
+					local config = schema.class.Config()
+					P("config", config.global.severity)
+					assert.equal(2, config.global.severity)
+					assert.equal("default", config.global.default_logger)
+
+					print(">>>>>>>>>>>>> END")
+				end)
+			end)
+		end)
+	end)
+end)
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/schema_spec.lua
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/test_schema.lua
+
+local M = {}
+
+local ulf = {
+	lib = require("ulf.lib"),
+}
+
+local ctable = require("ulf.lib.conf.nodes").ctable
+
+---comment
+---@param severity_name string
+M.severity_to_number = function(severity_name)
+	local smap = {
+		trace = 0,
+		debug = 1,
+		info = 2,
+		warn = 3,
+		error = 4,
+		off = 5,
+	}
+
+	return smap[severity_name]
+end
+
+local hooks = {
+
+	---comment
+	---@param v string @severity level as string
+	---@return number
+	severity = function(v)
+		return M.severity_to_number(v)
+	end,
+}
+
+---@class test.ulf.lib.conf.Defaults : ulf.lib.conf.ctable
+local Defaults = {}
+
+---@class test.ulf.lib.conf.ClientConfig @Configuration schema for a client
+Defaults.client = ctable({
+
+	global = ctable({
+		severity = {
+			"info",
+			hook = hooks.severity,
+			[[
+				    Global severity level. This is a last resort value and is
+				    applied if no severity level is set on a logger or channel.
+
+				    Available options are:
+				    - "trace"
+				    - "debug" (default)
+				    - "info"
+				    - "warn"
+				    - "error"
+				    ]],
+		},
+		default_logger = {
+			"default",
+			[[
+				    This value defines the default logger when no logger is
+				    explicitely addressed.
+
+				    Available options are:
+				    - "default" (default)
+				    - any other defined logger
+				    ]],
+		},
+	}, [[Global settings have presedence over local settings]]),
+
+	formatter = ctable({
+		line = ctable({
+			app_name_maxlen = {
+				10,
+				[[
+          Length of the application name in an output line.
+
+          Available options are:
+          - 10 (default)]],
+			},
+
+			context_name_maxlen = {
+				4,
+				[[
+          Length of the context name in an output line.
+
+          Available options are:
+          - 4 (default)]],
+			},
+
+			logger_name_maxlen = {
+				4,
+				[[
+          Length of the logger name in an output line.
+
+          Available options are:
+          - 7 (default)]],
+			},
+			max_length = {
+				400,
+				[[
+          Maximal length of the output line.
+
+          Available options are:
+          - 4 (default)]],
+			},
+
+			multi_line_output = {
+				false,
+				[[
+				      When enabled log messages span over multiple lines
+
+				      Available options are:
+				      - false (default)
+				      - true (default)]],
+			},
+		}, [[Settings for formatting line output.]]),
+	}, [[ Formatter settings]]),
+
+	channels = ctable({
+		stdout = ctable({
+			name = "stdout",
+			enabled = {
+				true,
+				[[
+		    enables or disables this channel
+
+		    Available options are:
+		    - true (default)
+		    - false
+		    ]],
+			},
+
+			severity = {
+				"debug",
+				hook = hooks.severity,
+				[[
+		    "default channel severity level"
+
+		    Available options are:
+		    - "trace"
+		    - "debug" (default)
+		    - "info"
+		    - "warn"
+		    - "error"
+		    ]],
+			},
+
+			utf8 = {
+				true,
+				[[
+		    "When enabled use utf8 symbols."
+
+		    Available options are:
+		    - true (default)
+		    - false
+		    ]],
+			},
+			colors = {
+				true,
+				[[
+		    "When enabled use colors in output."
+
+		    Available options are:
+		    - true (default)
+		    - false
+		    ]],
+			},
+		}, [[Settings for the 'stdout' channel]]),
+
+		fs = ctable({
+
+			name = "fs",
+			enabled = {
+				true,
+				[[
+		    enables or disables this channel
+
+		    Available options are:
+		    - true (default)
+		    - false
+		    ]],
+			},
+
+			severity = {
+				"debug",
+				hook = hooks.severity,
+				[[
+		    "default channel severity level"
+
+		    Available options are:
+		    - "trace"
+		    - "debug" (default)
+		    - "info"
+		    - "warn"
+		    - "error"
+		    ]],
+			},
+
+			leave_fd_open = {
+				false,
+				[[
+				  Do not close file descriptor while active.
+
+				  Available options are:
+				  - false (default)
+				  - true
+				  ]],
+			},
+		}, [[Settings for the 'fs' channel]]),
+	}, [[Channel settings]]),
+}, [[Configuration schema for registered client applications]])
+
+---@class test.ulf.lib.conf.LoggerConfig @Configuration schema for a logger
+Defaults.logger = ctable(
+	{
+
+		enabled = {
+			true,
+			[[Enables or disables this logger.]],
+		},
+
+		icon = {
+			[[An optional icon for this logger]],
+			type = "string",
+		},
+
+		channels = ctable({
+			fs = ctable({
+
+				enabled = {
+					true,
+					[[Enables or disables this channel for this logger.]],
+				},
+
+				severity = {
+					type = "string",
+					fallback = "config.client.channels.fs.severity",
+					hook = hooks.severity,
+					[[Overrides severity for this channel.]],
+				},
+			}, [[Controls settings for the logfile channel.]]),
+		}, [[The channel options can be used to override channel settings.]]),
+	},
+	[[
+        Default settings for a single logger.
+
+        Each client application may define 1 .. n loggers. Then name of each logger must be unique.
+        The first logger is always the default logger and can be addressed using the name 'default'
+        and with the name the client provides for this logger. The default logger cannot be deleted
+        and is always present. If the client does not provide a logger definition a default logger
+        is automatically created using these settings.
+       ]]
+)
+
+return Defaults
+
+
+-- >>>>>>>>>>>>>>>>>> BEGIN FILE ./spec/tests/ulf/lib/conf/test_schema.lua
