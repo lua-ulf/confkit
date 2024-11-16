@@ -1,0 +1,118 @@
+================================================================================
+INTRODUCTION                                                       *ulf.confkit*
+
+ConfKit ...
+
+
+ulf.confkit                                                      *ulf.confkit*
+
+
+
+
+================================================================================
+TYPES                                                        *ulf.confkit.types*
+
+Types Module
+
+Example:
+>lua
+<
+
+
+ulf.confkit.types                                          *ulf.confkit.types*
+
+
+
+M.FieldType()                                  *ulf.confkit.types.FieldType()*
+    Represents a configurable field type in the Confkit library.
+
+    A `FieldType` defines the characteristics, validation rules, and options
+    for a configuration field. It ensures that fields adhere to predefined
+    rules and provides metadata for documentation and processing.
+
+    Creates a new `FieldType` instance.
+
+    Example:
+    >lua
+    local Types = require("ulf.confkit.types")
+    Types.register({
+      "confkit:string",
+      [[This is a simple string field]],
+      {
+        function(name, value, context)
+          local maxlen = context.maxlen
+          local valid = #value <= maxlen
+          return valid, valid or "Error: value must not be longer than " .. tostring(maxlen)
+        end,
+
+        function(name, value)
+          local match = value:match("^CONFKIT:")
+          local valid = match ~= nil
+          return valid, valid or "Error: value must start with 'CONFKIT:'"
+        end,
+      },
+    })
+<
+
+
+
+    Options: ~
+        {id}          (string)                              A unique
+                                                            identifier for the
+                                                            field type.
+        {description} (string)                              A human-readable
+                                                            description of the
+                                                            field type, used
+                                                            for documentation
+                                                            and context.
+        {validators}  (ulf.confkit.validator_fn[])          A list of
+                                                            validator
+                                                            functions that
+                                                            validate values
+                                                            assigned to fields
+                                                            of this type.
+        {opts}        (ulf.confkit.types.FieldTypeOptions)  Optional.
+                                                            Additional options
+                                                            that define
+                                                            specific behavior
+                                                            or constraints for
+                                                            the field type.
+
+
+M.FieldType.new({id}, {description}, {validators}) *ulf.confkit.types.FieldType.new()*
+    comment
+
+
+    Parameters: ~
+        {id}          (string)  The ID of the field which has the form
+                                'confkit:field_name'
+        {description} (string)  The description of the field
+        {validators}  (ulf)     .confkit.validator_chain: Chain of validator
+                                functions to validate the field value before
+                                it is written
+
+
+M.Registry()                                    *ulf.confkit.types.Registry()*
+    A validator function validates a value
+
+
+    Options: ~
+        {_fields} (ulf.confkit.types.field_map)  map of field IDs to fields
+
+
+(id, description, validators, opts)
+	if M.Registry._fields[id]({id}, {description}, {validators}) *(id, description, validators, opts)
+	if ulf.confkit.types.Registry._fields[id]()*
+    comment
+
+
+    Parameters: ~
+        {id}          (string)  The ID of the field
+        {description} (string)  The description for the field
+        {validators}  (ulf)     .confkit.validator_chain: Chain of validator
+                                functions to validate the field value before
+                                it is written
+
+
+
+ vim:tw=78:ts=8:ft=help:norl:

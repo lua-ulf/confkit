@@ -61,6 +61,8 @@ doc:
 	ulf-gendocs tree_sitter_lua --config .ulf-gendocs.json
 	head $(NVIM_DOC_FILE)
 
+docgen:
+	nvim --headless --noplugin -u scripts/minimal_init.vim -c "luafile ./scripts/gendocs.lua" -c 'qa'
 
 test: test_lua test_nvim
 
@@ -105,4 +107,4 @@ lint:
 clean:
 	rm -rf $(DEPS)
 
-.PHONY: all deps doc clean lint test test_nvim test_lua
+.PHONY: all deps docgen doc clean lint test test_nvim test_lua

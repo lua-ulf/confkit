@@ -102,6 +102,9 @@ local trim = require("ulf.lib.string.trimmer").trim
 local gsplit = require("ulf.lib.string.splitter").gsplit
 local dedent = require("ulf.lib.string.dedent").dedent
 
+local f = string.format
+local Validator = require("ulf.confkit.validator")
+local types = require("ulf.confkit.types")
 local make_message = require("ulf.lib.error").make_message
 
 ---@alias ulf.confkit.cfield_kind_type
@@ -110,17 +113,29 @@ local make_message = require("ulf.lib.error").make_message
 ---| 3 # Fallback config field
 ---| 10 # Non config field
 
----@class ulf.confkit.cfield_base
----@field name string
----@field value? any
----@field hook? ulf.confkit.hook_spec_fn
----@field fallback? string
----@field kind ulf.confkit.cfield_kind_type
----@field type string
----@field description string
+---@alias ulf.confkit.hook_fn fun(v:any):any
 
----@class ulf.confkit.cfield : ulf.confkit.cfield_base
+---@class ulf.confkit.cfield_optional
+---@field hook? ulf.confkit.hook_fn @A hook function takes the original value and returns a "replacement" value
+---@field fallback? string @Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+---
+---@class ulf.confkit.FieldSpec : ulf.confkit.cfield_optional
+---@field [1] string @The first list item is either a value or the description.
+---@field [2]? string @The second list item is the description if the first list item has a value.
+---@field type? string @Optional. Specifies the Lua data type.
 
+--
+
+---@class ulf.confkit.cfield : ulf.confkit.cfield_optional
+---@field name string @The name of the field.
+---@field default any @The default value of the field.
+---@field value any @The value of the field.
+---@field _value any @The real value writen to the table
+---@field field_type ulf.confkit.cfield_kind_type @The ID of the configuration field type.
+---@field type string @The Lua data type
+---@field description string @The description of the field
+
+--- BEHAVIOUR!
 ---@class ulf.confkit.cfield_kind
 M.kinds = {
 	MANDATORY_FIELD = 1,
@@ -129,6 +144,7 @@ M.kinds = {
 	NON_FIELD = 10,
 }
 
+--- DATA FORMAT
 M.valid_types = {
 
 	["string"] = true,
@@ -137,7 +153,50 @@ M.valid_types = {
 	["boolean"] = true,
 	["table"] = true,
 }
----@param field ulf.confkit.cfield_base
+
+---@type ulf.confkit.validator_fn
+M.validate_base = function(field)
+	local checks = {
+		name = {
+			valid = type(field.name) == "string",
+			message = "field name must be a string",
+		},
+		description = {
+			valid = type(field.description) == "string",
+			message = "field description must be a string",
+		},
+		type = {
+			valid = types.is_valid_type(field.type),
+			message = "field type '" .. tostring(field.type) .. "' is invalid",
+		},
+
+		hook = {
+			valid = field.hook == nil or (type(field.hook) == "function"),
+			message = "field hook must be a function",
+		},
+
+		fallback = {
+			valid = field.fallback == nil or (type(field.fallback) == "string"),
+			message = "field fallback must be a string",
+		},
+	}
+	local valid = true
+	---@type string[]
+	local errors = {}
+
+	for check_name, check_spec in pairs(checks) do
+		valid = check_spec.valid and valid
+		if not check_spec.valid then
+			errors[#errors + 1] = check_spec.message
+		end
+	end
+
+	return valid,
+		not valid and Validator.validation_error(field.name, field.value, "errors: " .. table.concat(errors, "\n"))
+			or nil
+end
+
+---@param field ulf.confkit.cfield
 M.validate = function(field)
 	if type(field.name) ~= "string" then
 		error(make_message({ "ulf.confkit.field", "validate" }, "Field must have a name. got=%s", tostring(field.name)))
@@ -154,14 +213,14 @@ M.validate = function(field)
 			)
 		)
 	end
-	if type(field.kind) ~= "number" then
+	if type(field.field_type) ~= "number" then
 		error(
 
 			make_message(
 				{ "ulf.confkit.field", "validate" },
-				"Field '%s': 'kind' must be a field kind ID. got=%s",
+				"Field '%s': 'field_type' must be a field field_type ID. got=%s",
 				field.name,
-				tostring(field.kind)
+				tostring(field.field_type)
 			)
 		)
 	end
@@ -177,7 +236,7 @@ M.validate = function(field)
 		)
 	end
 
-	if field.value == nil and not field.type then
+	if field.default == nil and not field.type then
 		error(
 			make_message(
 				{ "ulf.confkit.field", "validate" },
@@ -213,7 +272,7 @@ M.validate = function(field)
 end
 
 --- Returns a config field
----@param opts? ulf.confkit.cfield_base|string
+---@param opts? ulf.confkit.cfield
 ---@return ulf.confkit.cfield
 M.cfield = function(opts)
 	assert(
@@ -225,21 +284,31 @@ M.cfield = function(opts)
 		)
 	)
 
-	P({
-		"cfield.................",
-		opts,
-	})
-	M.validate(opts)
+	local ok, err = M.validate_base(opts)
+	if not ok then
+		error(err)
+	end
 
-	---@type table<string,fun(t:table,k:string):any>
+	---@type table<string,fun(t:table):any>
 	local accessors = {
 
-		value = function(t, k)
-			if opts.hook then
-				return opts.hook(opts.value)
+		value = function(t)
+			P(t)
+			---@type any
+			local source = t._value or t.default
+			if t.hook then
+				return t.hook(source)
 			end
 
-			return opts.value
+			return source
+		end,
+	}
+
+	---@type table<string,fun(t:table,v:any):any>
+	local writers = {
+
+		value = function(t, v)
+			t._value = v
 		end,
 	}
 
@@ -248,14 +317,31 @@ M.cfield = function(opts)
 		description = opts.description,
 		type = opts.type,
 		fallback = opts.fallback,
-		-- value = opts.value,
+		default = opts.default,
+		_value = opts.value,
 		hook = opts.hook,
-		kind = opts.kind,
+		field_type = opts.field_type,
 	}, {
+		---comment
+		---@param t ulf.confkit.field
+		---@param k string
+		---@return any
 		__index = function(t, k)
 			local accessor = accessors[k]
 			if type(accessor) == "function" then
 				return accessor(t, k)
+			end
+		end,
+		---@param t ulf.confkit.field
+		---@param k string
+		---@param v any
+		__newindex = function(t, k, v)
+			-- P("__newindex", k, v)
+			local writer = writers[k]
+			if writer then
+				writer(t, v)
+			else
+				rawset(t, k, v)
 			end
 		end,
 		__class = { name = "cfield" },
@@ -273,7 +359,7 @@ local normalize = function(s)
 end
 
 ---comment
----@param t table
+---@param t ulf.confkit.FieldSpec
 ---@return boolean
 function M.is_cfield_spec(t)
 	if type(t) ~= "table" or getmetatable(t) then
@@ -303,62 +389,45 @@ end
 --- be optional set.
 ---
 --- @param k string The key of the field
---- @param v table The value specification
+--- @param v ulf.confkit.FieldSpec The value specification
 --- @return ulf.confkit.cfield
 function M.parse_cfield(k, v)
 	---@type ulf.confkit.cfield
-	local field_spec = {}
+	local field_spec = {} ---@diagnostic disable-line: missing-fields
 	if not M.is_cfield_spec(v) then
-		return { kind = M.kinds.NON_FIELD }
+		return { field_type = M.kinds.NON_FIELD }
 	end
-	P("M.parse_cfield")
-	-- P({
-	-- 	"M.parse_cfield............................",
-	-- 	k = k,
-	-- 	v = v,
-	-- 	len_v = #v,
-	-- 	v_1 = v[1],
-	-- 	v_2 = v[2],
-	-- })
-	field_spec.kind = M.kinds.MANDATORY_FIELD
+	field_spec.field_type = M.kinds.MANDATORY_FIELD
 	field_spec.name = k
 
 	-- Extract value
 	---@type any
-	field_spec.value = v[1]
+	field_spec.default = v[1]
 
-	P({
-		"!!!!!!!!!!!!!",
-		v_len = #v,
-		v_1 = v[1],
-		v_2 = v[2],
-	})
-	-- FIXME: why #v==2 ?
-	-- only a description present so an OPTIONAL_FIELD
+	-- P({"!!!!!!!!!!!!!", v_len = #v, v_1 = v[1], v_2 = v[2],})
 	if #v == 1 then
-		field_spec.value = nil
-		field_spec.kind = M.kinds.OPTIONAL_FIELD
+		field_spec.default = nil
+		field_spec.field_type = M.kinds.OPTIONAL_FIELD
 		field_spec.description = v[1]
 	elseif #v == 2 then
 		if v[1] == nil then
-			field_spec.value = nil
-			field_spec.kind = M.kinds.OPTIONAL_FIELD
+			field_spec.default = nil
+			field_spec.field_type = M.kinds.OPTIONAL_FIELD
 		end
 		field_spec.description = v[2]
 	end
 
 	if v.fallback then
 		field_spec.fallback = v.fallback
-		field_spec.kind = M.kinds.FALLBACK_FIELD
+		field_spec.field_type = M.kinds.FALLBACK_FIELD
 	end
 
 	-- extract field type.
-	field_spec.type = v.type or (field_spec.value ~= nil and type(field_spec.value)) -- Only determine type from value if it's not nil
+	field_spec.type = v.type or (field_spec.default ~= nil and type(field_spec.default)) -- Only determine type from default if it's not nil
 
 	field_spec.description = dedent(normalize(field_spec.description))
 	field_spec.hook = v.hook
 
-	P(field_spec)
 	return M.cfield(field_spec)
 end
 

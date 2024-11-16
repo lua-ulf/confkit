@@ -9,24 +9,13 @@ return {
 	default = {
 		tags = {
 			"tests",
-			"ulf",
-			"ulf.lib",
-			"ulf.lib.platform",
-			"ulf.lib.Emitter",
-			"ulf.lib.error",
-			"ulf.lib.string",
-			"ulf.lib.table",
-			"ulf.lib.luacats",
-			"ulf.lib.conf",
-			"ulf.lib.conf.field",
-			"ulf.lib.conf.nodes",
-			"ulf.lib.conf.schema",
-			"ulf.lib.conf.block",
-			"ulf.lib.types",
-			"ulf.lib.module",
-			"ulf.lib.module.exports",
-			"ulf.lib.module.reloader",
-			"ulf.lib.mt",
+			"ulf.confkit",
+			"ulf.confkit.field",
+			"ulf.confkit.types",
+			"ulf.confkit.nodes",
+			"ulf.confkit.schema",
+			"ulf.confkit.validator",
+			"ulf.confkit.block",
 		},
 		output = "htest",
 		verbose = true,
@@ -37,96 +26,41 @@ return {
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
-	["ulf"] = {
-		tags = "ulf",
+	["ulf.confkit"] = {
+		tags = "ulf.confkit",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
-	["ulf.lib"] = {
-		tags = "ulf.lib",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.string"] = {
-		tags = "ulf.lib.string",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.Emitter"] = {
-		tags = "ulf.lib.Emitter",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.platform"] = {
-		tags = "ulf.lib.platform",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.luacats"] = {
-		tags = "ulf.lib.luacats",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.table"] = {
-		tags = "ulf.lib.table",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.types"] = {
-		tags = "ulf.lib.types",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.error"] = {
-		tags = "ulf.lib.error",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.module"] = {
-		tags = "ulf.lib.module",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.module.exports"] = {
-		tags = "ulf.lib.module.exports",
+	["ulf.confkit.field"] = {
+		tags = "ulf.confkit.field",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
 
-	["ulf.lib.module.reloader"] = {
-		tags = "ulf.lib.module.reloader",
+	["ulf.confkit.block"] = {
+		tags = "ulf.confkit.block",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
-	["ulf.lib.mt"] = {
-		tags = "ulf.lib.mt",
+	["ulf.confkit.nodes"] = {
+		tags = "ulf.confkit.nodes",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
-
-	["ulf.lib.conf"] = {
-		tags = "ulf.lib.conf",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.conf.field"] = {
-		tags = "ulf.lib.conf.field",
+	["ulf.confkit.schema"] = {
+		tags = "ulf.confkit.schema",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
 
-	["ulf.lib.conf.block"] = {
-		tags = "ulf.lib.conf.block",
+	["ulf.confkit.types"] = {
+		tags = "ulf.confkit.schema",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
-	["ulf.lib.conf.nodes"] = {
-		tags = "ulf.lib.conf.nodes",
-		ROOT = { "spec/tests" },
-		verbose = true,
-	},
-	["ulf.lib.conf.schema"] = {
-		tags = "ulf.lib.conf.schema",
+
+	["ulf.confkit.validator"] = {
+		tags = "ulf.confkit.validator",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
