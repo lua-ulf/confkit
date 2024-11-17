@@ -1,7 +1,7 @@
 {
   "gendocs": {
     "tree_sitter_lua": {
-      "files": "lua/ulf/confkit/init.lua,lua/ulf/confkit/types.lua",
+      "files": "lua/ulf/confkit/init.lua,lua/ulf/confkit/types.lua,lua/ulf/confkit/spec.lua",
       "app": "ulf.confkit",
       "output_path": "./doc"
     }

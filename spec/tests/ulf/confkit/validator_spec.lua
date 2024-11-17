@@ -18,7 +18,7 @@ describe("#ulf.confkit.validator", function()
 			})
 		end)
 
-		describe("number", function()
+		describe("string", function()
 			TC.TestCase.validator.type_validator({
 				valid = {
 					field = { name = "name", type = "string", value = "test" },

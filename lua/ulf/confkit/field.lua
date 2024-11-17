@@ -1,146 +1,50 @@
----@brief [[
---- `ulf.confkit.field` is responsible for defining and managing configuration fields within the `ulf.confkit` module.
----
---- This module encapsulates individual configuration fields, ensuring each field is associated with its data type, optional
---- default values, descriptions, validation hooks, and fallbacks. By centralizing field responsibilities, this module
---- facilitates managing defaults, field validation, transformations, and access logic, enabling concise control of each
---- field's behavior.
----
----
---- Usage instructions:
----   1. Define each configuration field using `ulf.confkit.field.cfield`.
----   2. Use hooks and fallback configurations to customize field behaviors.
----   3. Access validated and transformed field values through ConfigBlocks that leverage these field definitions.
----
---- Below is an overview of the `ulf.confkit.field` module:
---- <pre>
---- ┌─────────────────────────────────────────────────────────┐
---- │ ┌──────────┐                                            │
---- │ │ Config   │      ┌────────────┐    ┌──────────┐        │
---- │ │ Block    │──▶   │ Field      │───▶│ Schema   │        │
---- │ │          │      │ Definitions│    │ Functions│        │
---- │ └──┬───────┘      └────────────┘    └──────────┘        │
---- │    │ Hooks +      ┌────────────┐     ▲                  │
---- │    │ Fallbacks    │ Validation │     └───────────┐      │
---- │    │ Applied      └──────▲─────┘                 │      │
---- │    ▼                     │                       │      │
---- │ ┌────────────────────┐   │       ┌────────────┐  │      │
---- │ │Default + Custom    │   │       │Field Access│◀─┘      │
---- │ │Fields, Descriptions│           │Utilities   │         │
---- │ └────────────────────┘           └────────────┘         │
---- │              ulf.confkit.field module                  │
---- └─────────────────────────────────────────────────────────┘
----
---- Main components of `ulf.confkit.field`:
----   1 `cfield`: Defines individual fields within configuration tables, specifying types, defaults, descriptions, and hooks.
----   2 `validate`: Ensures each field conforms to the defined data type, hooks, and validation requirements.
----   3 `is_cfield_spec`: Helper function that checks if a table follows the `cfield` specification format.
----   4 `parse_cfield`: Parses and returns a configured `cfield` instance for easy field management.
---- </pre>
----
---- Additional resources for `ulf.confkit.field`:
---- <pre>
---- https://github.com/ulf-project/ulf.lib
----
----   :h ulf.confkit.field
----   :h ulf.confkit.ctable
----   :h ulf.confkit.ConfigBlock
----   :h ulf.confkit.schema
----   :h ulf.confkit.util
---- </pre>
----
---- Example:
-
---- Examples:
---- These examples start simple and introduce more features progressively.
----
---- Basic Field Definition:
---- <code=lua>
---- local field = require("ulf.confkit.field")
----
---- -- Define a field with a name and description:
---- local name_field = field.parse_cfield(
----   "name",
----   { "John Doe", "Name field" }
---- )
---- assert.equal("John Doe", name_field.value)
---- assert.equal("Name field", name_field.description)
---- </code>
----
---- Adding Data Type:
---- <code=lua>
---- local age_field = field.parse_cfield(
----   "age",
----   { 42, "Age field", type = "number" }
---- )
---- assert.equal(42, age_field.value)
---- assert.equal("number", age_field.type)
---- </code>
----
---- Using Hooks to Transform Values:
---- <code=lua>
---- local severity_to_number = function(severity_name)
----   local smap = {
----     trace = 0, debug = 1, info = 2, warn = 3, error = 4, off = 5
----   }
----   return smap[severity_name]
---- end
----
---- local severity_field = field.parse_cfield(
----   "severity",
----   { "debug", "Severity level", hook = severity_to_number }
---- )
---- assert.equal(1, severity_field.value)
---- </code>---
----
----@brief ]]
-
 ---@class ulf.confkit.field
 local M = {}
-
-local trim = require("ulf.lib.string.trimmer").trim
-local gsplit = require("ulf.lib.string.splitter").gsplit
-local dedent = require("ulf.lib.string.dedent").dedent
 
 local f = string.format
 local Validator = require("ulf.confkit.validator")
 local types = require("ulf.confkit.types")
 local make_message = require("ulf.lib.error").make_message
 
----@alias ulf.confkit.cfield_kind_type
----| 1 # Mandatory config field
----| 2 # Optional config field
----| 3 # Fallback config field
----| 10 # Non config field
+local Constants = require("ulf.confkit.constants")
+local NIL = Constants.NIL
 
 ---@alias ulf.confkit.hook_fn fun(v:any):any
 
----
----@class ulf.confkit.FieldSpec : ulf.confkit.cfield_optional
----@field [1] string: The first list item is either a value or the description.
----@field [2]? string: The second list item is the description if the first list item has a value.
----@field type? string: Optional. Specifies the Lua data type.
+---@class ulf.confkit.field.FieldOptions @FieldOptions are options which are passed to the constructor to set initial values
+---@field name string: The name of the field.
+---@field default any: The default value of the field.
+---@field value any: The value of the field.
+---@field field_type ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field type string: The Lua data type
+---@field description string: The description of the field
+---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
+---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+---@field context? {target:any}: Optional. A context for advanced behaviour
+
+---@class ulf.confkit.cfield_optional
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
---- BEHAVIOUR!
----@class ulf.confkit.cfield_kind
-M.kinds = {
-	MANDATORY_FIELD = 1,
-	OPTIONAL_FIELD = 2,
-	FALLBACK_FIELD = 3,
-	NON_FIELD = 10,
-}
-
---- DATA FORMAT
-M.valid_types = {
-
-	["string"] = true,
-	["number"] = true,
-	["function"] = true,
-	["boolean"] = true,
-	["table"] = true,
-}
+---@class ulf.confkit.field.Field : ulf.confkit.cfield_optional
+---@field name string: The name of the field.
+---@field default any: The default value of the field.
+---@field value any: The value of the field.
+---@field _value any: The real value writen to the table
+---@field field_type ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field type string: The Lua data type
+---@field description string: The description of the field
+---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
+---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+---@field context? {target:any}: Optional. A context for advanced behaviour
+---@field validate fun(self:ulf.confkit.field.Field):boolean,string?: Validates a field, returns true for success or false,errors in case of error
+---@overload fun(self:ulf.confkit.field.Field):ulf.confkit.field.Field
+local Field = setmetatable({}, {
+	__call = function(t, ...)
+		return t.new(...)
+	end,
+})
+M.Field = Field
 
 ---@type ulf.confkit.validator_fn
 M.validate_base = function(field)
@@ -167,6 +71,16 @@ M.validate_base = function(field)
 			valid = field.fallback == nil or (type(field.fallback) == "string"),
 			message = "field fallback must be a string",
 		},
+
+		--- TODO: validate context
+		-- context = {
+		-- }
+
+		--- FIXME: rule does not work
+		-- value = {
+		-- 	valid = (field.value ~= nil and field.default ~= nil and type(field.value) == type(field.default)) or true,
+		-- 	message = "field default and field value must have the same type",
+		-- },
 	}
 	local valid = true
 	---@type string[]
@@ -179,117 +93,132 @@ M.validate_base = function(field)
 		end
 	end
 
+	-- P({
+	-- 	"validate_base",
+	-- 	errors = errors,
+	-- })
 	return valid,
 		not valid and Validator.validation_error(field.name, field.value, "errors: " .. table.concat(errors, "\n"))
 			or nil
 end
 
 ---comment
----@param field ulf.confkit.cfield
----@return boolean,string?
+---@param field ulf.confkit.field.Field
 function M.validate(field)
+	P("incoming FIED?????????????", field)
 	---@type boolean
 	local ok
 	---@type string[]
-	local messages = {}
+	local errors = {}
 	---@type string
 	local err
 
 	ok, err = M.validate_base(field)
 	if not ok then
-		-- error(err)
-		return false, err
+		error(err)
 	end
 
-	return true
+	local valid = true
+
+	local field_type = types.get(field.type)
+
+	for _, field_validator in pairs(field_type.validators) do
+		ok, err = field_validator(field)
+		valid = ok and valid
+		if not ok then
+			errors[#errors + 1] = err
+		end
+	end
+
+	if not valid then
+		error(table.concat(errors, "\n"))
+	end
 end
 
---- Returns a config field
----@param opts? ulf.confkit.cfield
----@return ulf.confkit.cfield
-M.cfield = function(opts)
+---@type table<string,fun(t:ulf.confkit.field.Field):any>
+Field.accessors = {
+
+	value = function(t)
+		---@type any
+		local v
+		if t._value == NIL then
+			v = t.default
+		else
+			v = t._value
+		end
+
+		if t.hook then
+			return t.hook(v)
+		end
+
+		return v
+	end,
+}
+--- The function is run before validation and ensures that sane defaults
+--- are set.
+---@param spec ulf.confkit.field.Field
+---@return ulf.confkit.field.Field
+Field.apply_defaults = function(spec)
+	local type_from = spec.value ~= NIL and spec.value or spec.default
+	if spec.type == nil and type_from ~= nil then
+		spec.type = type(type_from)
+	end
+	-- if spec.value == nil then
+	-- 	spec._value = NIL
+	-- end
+	return spec
+end
+
+---@param opts? ulf.confkit.field.Field
+---@return ulf.confkit.field.Field
+function Field.new(opts)
 	assert(
 		type(opts) == "table",
 		make_message(
-			{ "ulf.confkit.field", "cfield" },
+			{ "ulf.confkit.field", "Field" },
 			"opts must be a table with {optional,value,type,description}. got=%s",
 			tostring(opts)
 		)
 	)
 
-	local ok, err = M.validate_base(opts)
-	if not ok then
-		error(err)
-	end
+	opts = Field.apply_defaults(opts)
+	M.validate(opts)
 
-	local field_type = types.get(opts.type)
-
-	---@type table<string,fun(t:table):any>
-	local accessors = {
-
-		value = function(t)
-			P(t)
-			---@type any
-			local source = t._value or t.default
-			if t.hook then
-				return t.hook(source)
-			end
-
-			return source
-		end,
-	}
-
-	---@type table<string,fun(t:table,v:any):any>
+	---@type table<string,fun(t:ulf.confkit.field.Field,v:any):any>
 	local writers = {
 
 		value = function(t, v)
+			v = v or NIL
 			t._value = v
 		end,
 	}
-	---@class ulf.confkit.cfield_optional
-	---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
-	---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
-	---@class ulf.confkit.cfield : ulf.confkit.cfield_optional
-	---@field name string: The name of the field.
-	---@field default any: The default value of the field.
-	---@field value any: The value of the field.
-	---@field _value any: The real value writen to the table
-	---@field field_type ulf.confkit.cfield_kind_type: The ID of the configuration field type.
-	---@field type string: The Lua data type
-	---@field description string: The description of the field
-	---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
-	---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
-	---@field validate fun(self:ulf.confkit.cfield):boolean,string?: Validates a field, returns true for success or false,errors in case of error
 	local obj = {
 		name = opts.name,
 		description = opts.description,
 		type = opts.type,
 		fallback = opts.fallback,
 		default = opts.default,
-		_value = opts.value,
+		_value = opts.value or NIL,
 		hook = opts.hook,
 		field_type = opts.field_type,
+		context = opts.context,
 	}
 
-	---comment
-	---@param self ulf.confkit.cfield
-	obj.validate = function(self)
-		return M.validate(self)
-	end
-
-	return setmetatable(obj, {
+	local self = setmetatable(obj, {
 		---comment
-		---@param t ulf.confkit.field
+		---@param t ulf.confkit.field.Field
 		---@param k string
 		---@return any
 		__index = function(t, k)
-			local accessor = accessors[k]
+			print(f(">>>>>>>>>>> __index: k=%s", k))
+			local accessor = Field.accessors[k]
 			if type(accessor) == "function" then
 				return accessor(t)
 			end
 		end,
-		---@param t ulf.confkit.field
+
+		---@param t ulf.confkit.field.Field
 		---@param k string
 		---@param v any
 		__newindex = function(t, k, v)
@@ -301,91 +230,10 @@ M.cfield = function(opts)
 				rawset(t, k, v)
 			end
 		end,
-		__class = { name = "cfield" },
+		__class = { name = "ulf.confkit.Field" },
 	})
-end
 
----@param s string
----@return string
-local normalize = function(s)
-	local lines = {}
-	for line in gsplit(s, "\n", { plain = true }) do
-		table.insert(lines, trim(line))
-	end
-	return table.concat(lines, "\n")
-end
-
----comment
----@param t ulf.confkit.FieldSpec
----@return boolean
-function M.is_cfield_spec(t)
-	if type(t) ~= "table" or getmetatable(t) then
-		return false
-	end
-
-	local has_description = type(t[#t]) == "string"
-
-	if not has_description then
-		return false
-	end
-
-	if #t == 1 then
-		if t.type == nil then
-			return false
-		end
-	end
-
-	return true
-end
-
---- Parses a cfield table spec and returns an instance of cfield.
----
---- Value is always the first list item. If the key 'value' is
---- present then value is the value of this kv paire. If len is 1 then
---- it is assumed that only a description is given and value can
---- be optional set.
----
---- @param k string The key of the field
---- @param v ulf.confkit.FieldSpec The value specification
---- @return ulf.confkit.cfield
-function M.parse_cfield(k, v)
-	---@type ulf.confkit.cfield
-	local field_spec = {} ---@diagnostic disable-line: missing-fields
-	if not M.is_cfield_spec(v) then
-		return { field_type = M.kinds.NON_FIELD }
-	end
-	field_spec.field_type = M.kinds.MANDATORY_FIELD
-	field_spec.name = k
-
-	-- Extract value
-	---@type any
-	field_spec.default = v[1]
-
-	-- P({"!!!!!!!!!!!!!", v_len = #v, v_1 = v[1], v_2 = v[2],})
-	if #v == 1 then
-		field_spec.default = nil
-		field_spec.field_type = M.kinds.OPTIONAL_FIELD
-		field_spec.description = v[1]
-	elseif #v == 2 then
-		if v[1] == nil then
-			field_spec.default = nil
-			field_spec.field_type = M.kinds.OPTIONAL_FIELD
-		end
-		field_spec.description = v[2]
-	end
-
-	if v.fallback then
-		field_spec.fallback = v.fallback
-		field_spec.field_type = M.kinds.FALLBACK_FIELD
-	end
-
-	-- extract field type.
-	field_spec.type = v.type or (field_spec.default ~= nil and type(field_spec.default)) -- Only determine type from default if it's not nil
-
-	field_spec.description = dedent(normalize(field_spec.description))
-	field_spec.hook = v.hook
-
-	return M.cfield(field_spec)
+	return self
 end
 
 return M

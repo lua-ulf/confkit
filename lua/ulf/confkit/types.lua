@@ -1,19 +1,10 @@
 ---@class ulf.confkit.types
 local M = {}
 
-local make_message = require("ulf.lib.error").make_message
-local Validator = require("ulf.confkit.validator")
-
----@alias ulf.confkit.types.field_attributes table<string,boolean> @map of possible field attributes
-
----@class ulf.confkit.types.FieldTypeOptions @Options for a field registration
----@field attributes? ulf.confkit.types.field_attributes @map of possible field attributes
-local FieldTypeOptions = {}
-
 ---@tag ulf.confkit.types
 ---@config { ["name"] = "Types" }
 
----@config { ['field_heading'] = "Options", ['module'] = "ulf.confkit.types" }
+--- config { ['field_heading'] = "Options", ['module'] = "ulf.confkit.types" }
 
 ---@brief [[
 --- Types Module
@@ -24,35 +15,45 @@ local FieldTypeOptions = {}
 ---
 ---@brief ]]
 
---- Represents a configurable field type in the Confkit library.
----
---- A `FieldType` defines the characteristics, validation rules, and options for a configuration field.
---- It ensures that fields adhere to predefined rules and provides metadata for documentation and processing.
----
---- Creates a new `FieldType` instance.
----
---- Example:
---- <code=lua>
---- local Types = require("ulf.confkit.types")
---- Types.register({
----   "confkit:string",
----   [[This is a simple string field]],
----   {
----     function(name, value, context)
----       local maxlen = context.maxlen
----       local valid = #value <= maxlen
----       return valid, valid or "Error: value must not be longer than " .. tostring(maxlen)
----     end,
----
----     function(name, value)
----       local match = value:match("^CONFKIT:")
----       local valid = match ~= nil
----       return valid, valid or "Error: value must start with 'CONFKIT:'"
----     end,
----   },
---- })
---- </code>
----
+local make_message = require("ulf.lib.error").make_message
+local Validator = require("ulf.confkit.validator")
+
+---@alias ulf.confkit.types.field_attributes table<string,boolean> @map of possible field attributes
+
+---@class ulf.confkit.types.FieldTypeOptions @Options for a field registration
+---@field attributes? ulf.confkit.types.field_attributes @map of possible field attributes
+local FieldTypeOptions = {}
+
+-- Represents a configurable field type in the Confkit library.
+--
+-- A `FieldType` defines the characteristics, validation rules, and options for a configuration field.
+-- It ensures that fields adhere to predefined rules and provides metadata for documentation and processing.
+--
+-- Creates a new `FieldType` instance.
+--
+-- Example:
+-- <code=lua>
+-- local Types = require("ulf.confkit.types")
+-- Types.register({
+--   "confkit:string",
+--   [[This is a simple string field]],
+--   {
+--     function(name, value, context)
+--       local maxlen = context.maxlen
+--       local valid = #value <= maxlen
+--       return valid, valid or "Error: value must not be longer than " .. tostring(maxlen)
+--     end,
+--
+--     function(name, value)
+--       local match = value:match("^CONFKIT:")
+--       local valid = match ~= nil
+--       return valid, valid or "Error: value must start with 'CONFKIT:'"
+--     end,
+--   },
+-- })
+-- </code>
+--
+
 ---@class ulf.confkit.types.FieldType @Represents a configurable field type in the Confkit library.
 ---@field id string: A unique identifier for the field type.
 ---@field description string: A human-readable description of the field type, used for documentation and context.
@@ -89,6 +90,7 @@ M.Registry = {
 	_fields = {
 		["string"] = M.FieldType("string", "basic string type", {
 			Validator.type_validator("string"),
+			Validator.string_validator,
 		}),
 		["number"] = M.FieldType("number", "basic number type", {
 			Validator.type_validator("number"),
@@ -131,6 +133,7 @@ end
 
 ---comment
 ---@param id string
+---@return ulf.confkit.types.FieldType
 M.get = function(id)
 	if not M.Registry._fields[id] then
 		error(make_message({ "ulf.confkit.types", "validate" }, "Field type '%s': invalid field id", tostring(id)))

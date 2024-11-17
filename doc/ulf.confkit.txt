@@ -12,51 +12,18 @@ ulf.confkit                                                      *ulf.confkit*
 ================================================================================
 TYPES                                                        *ulf.confkit.types*
 
-Types Module
-
-Example:
->lua
-<
-
-
 ulf.confkit.types                                          *ulf.confkit.types*
 
 
 
-M.FieldType()                                  *ulf.confkit.types.FieldType()*
+ulf.confkit.types.FieldTypeOptions        *ulf.confkit.types.FieldTypeOptions*
+    Options for a field registration
+
+
+ulf.confkit.types.FieldType                      *ulf.confkit.types.FieldType*
     Represents a configurable field type in the Confkit library.
 
-    A `FieldType` defines the characteristics, validation rules, and options
-    for a configuration field. It ensures that fields adhere to predefined
-    rules and provides metadata for documentation and processing.
-
-    Creates a new `FieldType` instance.
-
-    Example:
-    >lua
-    local Types = require("ulf.confkit.types")
-    Types.register({
-      "confkit:string",
-      [[This is a simple string field]],
-      {
-        function(name, value, context)
-          local maxlen = context.maxlen
-          local valid = #value <= maxlen
-          return valid, valid or "Error: value must not be longer than " .. tostring(maxlen)
-        end,
-
-        function(name, value)
-          local match = value:match("^CONFKIT:")
-          local valid = match ~= nil
-          return valid, valid or "Error: value must start with 'CONFKIT:'"
-        end,
-      },
-    })
-<
-
-
-
-    Options: ~
+    Fields: ~
         {id}          (string)                              A unique
                                                             identifier for the
                                                             field type.
@@ -79,7 +46,14 @@ M.FieldType()                                  *ulf.confkit.types.FieldType()*
                                                             the field type.
 
 
-M.FieldType.new({id}, {description}, {validators}) *ulf.confkit.types.FieldType.new()*
+ulf.confkit.types.Registry                        *ulf.confkit.types.Registry*
+    Maintains the registered fields
+
+    Fields: ~
+        {_fields} (ulf.confkit.types.field_map)  map of field IDs to fields
+
+
+M.FieldType.new({id}, {description}, {validators})         *M.FieldType.new()*
     comment
 
 
@@ -92,17 +66,9 @@ M.FieldType.new({id}, {description}, {validators}) *ulf.confkit.types.FieldType.
                                 it is written
 
 
-M.Registry()                                    *ulf.confkit.types.Registry()*
-    A validator function validates a value
-
-
-    Options: ~
-        {_fields} (ulf.confkit.types.field_map)  map of field IDs to fields
-
-
 (id, description, validators, opts)
 	if M.Registry._fields[id]({id}, {description}, {validators}) *(id, description, validators, opts)
-	if ulf.confkit.types.Registry._fields[id]()*
+	if M.Registry._fields[id]()*
     comment
 
 
@@ -112,6 +78,55 @@ M.Registry()                                    *ulf.confkit.types.Registry()*
         {validators}  (ulf)     .confkit.validator_chain: Chain of validator
                                 functions to validate the field value before
                                 it is written
+
+
+M.is_valid_type({id})                                      *M.is_valid_type()*
+    comment
+
+
+    Parameters: ~
+        {id} (string)
+
+    Return: ~
+        boolean
+
+
+M.get({id})                                                          *M.get()*
+    comment
+
+
+    Parameters: ~
+        {id} (string)
+
+    Return: ~
+        ulf.confkit.types.FieldType
+
+
+
+================================================================================
+`ulf.confkit.spec` is responsible for parsing and using specification tables
+
+`ulf.confkit.spec.field` functions for field specifications
+
+`ulf.confkit.spec.ctable` functions for ctable specifications
+
+
+General sequence processing for a field:
+  1. user needs to parse a spec
+  2. `ulf.confkit.spec.field.parse` is called
+  3. if the parser detects errors it raises an error
+  4. the output of the parse function is a set of options, for fields:
+     ulf.confkit.field.FieldOptions
+  5. the constructor `ulf.confkit.field.Field` takes an option set
+  6. the pre validation hook is run which sets some reasonable defaults or 
+     tries to guess missing values
+  7. validation is called, if errors are detected an error is raised
+  8. the constructor returns the field
+
+
+
+ulf.confkit.spec                                            *ulf.confkit.spec*
+
 
 
 

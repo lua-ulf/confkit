@@ -16,7 +16,7 @@ local init_done
 local f = string.format
 
 --- A validator function validates a value
----@alias ulf.confkit.validator_fn fun(field:ulf.confkit.cfield,context:table<string,any>?):boolean,string?:boolean,string?
+---@alias ulf.confkit.validator_fn fun(field:ulf.confkit.field.Field,context:table<string,any>?):boolean,string?:boolean,string?
 
 --- A validator function chain is a list of validators
 ---@alias ulf.confkit.validator_chain ulf.confkit.validator_fn[]
@@ -34,6 +34,9 @@ end
 ---@return ulf.confkit.validator_fn
 M.type_validator = function(wanted_type)
 	return function(field)
+		if field.value == nil then
+			return true
+		end
 		local got_type = type(field.value)
 		local match_type = got_type == wanted_type
 		return match_type,
@@ -45,6 +48,23 @@ M.type_validator = function(wanted_type)
 	end
 end
 
-M.string_validator = function(name, value, context) end
+---comment
+---@param field ulf.confkit.field.Field
+---@param context table<string,any>
+M.string_validator = function(field, context)
+	context = context or {}
+
+	local valid = true
+	if context.maxlen and field.value ~= nil then
+		valid = #field.value <= context.maxlen
+	end
+
+	return valid,
+		not valid and M.validation_error(
+			field.name,
+			field.value,
+			f("string '%s' must not be longer than %s", field.value, context.maxlen)
+		) or nil
+end
 
 return M

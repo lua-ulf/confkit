@@ -13,6 +13,7 @@ return {
 			"ulf.confkit.field",
 			"ulf.confkit.types",
 			"ulf.confkit.nodes",
+			"ulf.confkit.spec",
 			"ulf.confkit.schema",
 			"ulf.confkit.validator",
 			"ulf.confkit.block",
@@ -61,6 +62,12 @@ return {
 
 	["ulf.confkit.validator"] = {
 		tags = "ulf.confkit.validator",
+		ROOT = { "spec/tests" },
+		verbose = true,
+	},
+
+	["ulf.confkit.spec"] = {
+		tags = "ulf.confkit.spec",
 		ROOT = { "spec/tests" },
 		verbose = true,
 	},
