@@ -115,25 +115,13 @@ local make_message = require("ulf.lib.error").make_message
 
 ---@alias ulf.confkit.hook_fn fun(v:any):any
 
----@class ulf.confkit.cfield_optional
----@field hook? ulf.confkit.hook_fn @A hook function takes the original value and returns a "replacement" value
----@field fallback? string @Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 ---
 ---@class ulf.confkit.FieldSpec : ulf.confkit.cfield_optional
----@field [1] string @The first list item is either a value or the description.
----@field [2]? string @The second list item is the description if the first list item has a value.
----@field type? string @Optional. Specifies the Lua data type.
-
---
-
----@class ulf.confkit.cfield : ulf.confkit.cfield_optional
----@field name string @The name of the field.
----@field default any @The default value of the field.
----@field value any @The value of the field.
----@field _value any @The real value writen to the table
----@field field_type ulf.confkit.cfield_kind_type @The ID of the configuration field type.
----@field type string @The Lua data type
----@field description string @The description of the field
+---@field [1] string: The first list item is either a value or the description.
+---@field [2]? string: The second list item is the description if the first list item has a value.
+---@field type? string: Optional. Specifies the Lua data type.
+---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
+---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
 --- BEHAVIOUR!
 ---@class ulf.confkit.cfield_kind
@@ -196,79 +184,24 @@ M.validate_base = function(field)
 			or nil
 end
 
+---comment
 ---@param field ulf.confkit.cfield
-M.validate = function(field)
-	if type(field.name) ~= "string" then
-		error(make_message({ "ulf.confkit.field", "validate" }, "Field must have a name. got=%s", tostring(field.name)))
+---@return boolean,string?
+function M.validate(field)
+	---@type boolean
+	local ok
+	---@type string[]
+	local messages = {}
+	---@type string
+	local err
+
+	ok, err = M.validate_base(field)
+	if not ok then
+		-- error(err)
+		return false, err
 	end
 
-	if type(field.description) ~= "string" then
-		error(
-
-			make_message(
-				{ "ulf.confkit.field", "validate" },
-				"Field '%s': 'description' must be a string. got=%s",
-				field.name,
-				tostring(field.description)
-			)
-		)
-	end
-	if type(field.field_type) ~= "number" then
-		error(
-
-			make_message(
-				{ "ulf.confkit.field", "validate" },
-				"Field '%s': 'field_type' must be a field field_type ID. got=%s",
-				field.name,
-				tostring(field.field_type)
-			)
-		)
-	end
-
-	if not M.valid_types[field.type] then
-		error(
-			make_message(
-				{ "ulf.confkit.field", "validate" },
-				"Field '%s': 'type' can have the value: boolean, string, number, function or table. got=%s",
-				field.name,
-				field.type
-			)
-		)
-	end
-
-	if field.default == nil and not field.type then
-		error(
-			make_message(
-				{ "ulf.confkit.field", "validate" },
-				"Field '%s': type of field must be set if field has no value",
-				field.name
-			)
-		)
-	end
-
-	if field.hook and type(field.hook) ~= "function" then
-		error(
-			make_message(
-				{ "ulf.confkit.field", "parse_cfield" },
-				"Field '%s': 'hook' must be a function. got=%s",
-				field.name,
-				type(field.hook)
-			)
-		)
-	end
-
-	if field.fallback then
-		if type(field.fallback) ~= "function" and type(field.fallback) ~= "string" then
-			error(
-				make_message(
-					{ "ulf.confkit.field", "parse_cfield" },
-					"Field '%s': 'fallback' must be a string or function. got=%s",
-					field.name,
-					type(field.fallback)
-				)
-			)
-		end
-	end
+	return true
 end
 
 --- Returns a config field
@@ -288,6 +221,8 @@ M.cfield = function(opts)
 	if not ok then
 		error(err)
 	end
+
+	local field_type = types.get(opts.type)
 
 	---@type table<string,fun(t:table):any>
 	local accessors = {
@@ -311,8 +246,22 @@ M.cfield = function(opts)
 			t._value = v
 		end,
 	}
+	---@class ulf.confkit.cfield_optional
+	---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
+	---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
-	return setmetatable({
+	---@class ulf.confkit.cfield : ulf.confkit.cfield_optional
+	---@field name string: The name of the field.
+	---@field default any: The default value of the field.
+	---@field value any: The value of the field.
+	---@field _value any: The real value writen to the table
+	---@field field_type ulf.confkit.cfield_kind_type: The ID of the configuration field type.
+	---@field type string: The Lua data type
+	---@field description string: The description of the field
+	---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
+	---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+	---@field validate fun(self:ulf.confkit.cfield):boolean,string?: Validates a field, returns true for success or false,errors in case of error
+	local obj = {
 		name = opts.name,
 		description = opts.description,
 		type = opts.type,
@@ -321,7 +270,15 @@ M.cfield = function(opts)
 		_value = opts.value,
 		hook = opts.hook,
 		field_type = opts.field_type,
-	}, {
+	}
+
+	---comment
+	---@param self ulf.confkit.cfield
+	obj.validate = function(self)
+		return M.validate(self)
+	end
+
+	return setmetatable(obj, {
 		---comment
 		---@param t ulf.confkit.field
 		---@param k string
@@ -329,7 +286,7 @@ M.cfield = function(opts)
 		__index = function(t, k)
 			local accessor = accessors[k]
 			if type(accessor) == "function" then
-				return accessor(t, k)
+				return accessor(t)
 			end
 		end,
 		---@param t ulf.confkit.field
