@@ -13,10 +13,10 @@ local NIL = Constants.NIL
 
 ---@class ulf.confkit.field.FieldOptions @FieldOptions are options which are passed to the constructor to set initial values
 ---@field name string: The name of the field.
----@field default any: The default value of the field.
----@field value any: The value of the field.
----@field field_type ulf.confkit.field_behaviour_type: The ID of the configuration field type.
----@field type string: The Lua data type
+---@field default? any: The default value of the field.
+---@field value? any: The value of the field.
+---@field behaviour? ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field type? string: The Lua data type
 ---@field description string: The description of the field
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
@@ -31,14 +31,14 @@ local NIL = Constants.NIL
 ---@field default any: The default value of the field.
 ---@field value any: The value of the field.
 ---@field _value any: The real value writen to the table
----@field field_type ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field behaviour ulf.confkit.field_behaviour_type: The ID of the configuration field type.
 ---@field type string: The Lua data type
 ---@field description string: The description of the field
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 ---@field context? {target:any}: Optional. A context for advanced behaviour
----@field validate fun(self:ulf.confkit.field.Field):boolean,string?: Validates a field, returns true for success or false,errors in case of error
----@overload fun(self:ulf.confkit.field.Field):ulf.confkit.field.Field
+---@field validate fun(self:ulf.confkit.field.FieldOptions):boolean,string?: Validates a field, returns true for success or false,errors in case of error
+---@overload fun(self:ulf.confkit.field.FieldOptions):ulf.confkit.field.Field
 local Field = setmetatable({}, {
 	__call = function(t, ...)
 		return t.new(...)
@@ -103,7 +103,7 @@ M.validate_base = function(field)
 end
 
 ---comment
----@param field ulf.confkit.field.Field
+---@param field ulf.confkit.field.FieldOptions
 function M.validate(field)
 	P("incoming FIED?????????????", field)
 	---@type boolean
@@ -120,9 +120,9 @@ function M.validate(field)
 
 	local valid = true
 
-	local field_type = types.get(field.type)
+	local behaviour = types.get(field.type)
 
-	for _, field_validator in pairs(field_type.validators) do
+	for _, field_validator in pairs(behaviour.validators) do
 		ok, err = field_validator(field)
 		valid = ok and valid
 		if not ok then
@@ -156,8 +156,8 @@ Field.accessors = {
 }
 --- The function is run before validation and ensures that sane defaults
 --- are set.
----@param spec ulf.confkit.field.Field
----@return ulf.confkit.field.Field
+---@param spec ulf.confkit.field.FieldOptions
+---@return ulf.confkit.field.FieldOptions
 Field.apply_defaults = function(spec)
 	local type_from = spec.value ~= NIL and spec.value or spec.default
 	if spec.type == nil and type_from ~= nil then
@@ -169,7 +169,7 @@ Field.apply_defaults = function(spec)
 	return spec
 end
 
----@param opts? ulf.confkit.field.Field
+---@param opts? ulf.confkit.field.FieldOptions
 ---@return ulf.confkit.field.Field
 function Field.new(opts)
 	assert(
@@ -201,7 +201,7 @@ function Field.new(opts)
 		default = opts.default,
 		_value = opts.value or NIL,
 		hook = opts.hook,
-		field_type = opts.field_type,
+		behaviour = opts.behaviour,
 		context = opts.context,
 	}
 

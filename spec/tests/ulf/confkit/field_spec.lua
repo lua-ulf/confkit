@@ -110,7 +110,7 @@ describe("#ulf.confkit.field", function()
 				end)
 			end)
 
-			describe("when opts.field_type is not a number", function()
+			describe("when opts.behaviour is not a number", function()
 				it("fails with an error", function()
 					assert.has_error(function()
 						field.Field({}) ---@diagnostic disable-line: missing-fields
@@ -127,6 +127,7 @@ describe("#ulf.confkit.field", function()
 			end)
 		end)
 	end)
+
 	describe("__newindex", function()
 		it("sets a value", function()
 			assert.has_no_error(function()
