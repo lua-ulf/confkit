@@ -9,12 +9,12 @@ describe("#ulf.confkit.field", function()
 		describe("Field.new", function()
 			describe("with required attributes", function()
 				describe("and a default value it creates a field", function()
-					local opts = {
+					local f = field.Field({
 						name = "test_field",
 						default = "default_value",
 						description = "A test field",
-					}
-					local f = field.Field(opts)
+						type = "string",
+					})
 
 					it("with a default value", function()
 						assert.equal("default_value", f.value)
@@ -40,6 +40,7 @@ describe("#ulf.confkit.field", function()
 						name = "test_field",
 						value = "some_value",
 						description = "A test field",
+						type = "string",
 					}
 					local f = field.Field(opts)
 
@@ -65,6 +66,7 @@ describe("#ulf.confkit.field", function()
 						default = "default_value",
 						value = "some_value",
 						description = "A test field",
+						type = "string",
 					}
 					local f = field.Field(opts)
 
@@ -85,22 +87,22 @@ describe("#ulf.confkit.field", function()
 				end)
 				--- FIXME: does not work
 				---
-				-- describe("and a value and a default which have different types", function()
-				-- 	local opts = {
-				-- 		name = "test_field",
-				-- 		default = 1,
-				-- 		value = "some_value",
-				-- 		description = "A test field",
-				-- 	}
-				--
-				-- 	it("fails with an error", function()
-				-- 		print(">")
-				-- 		assert.has_error(function()
-				-- 			local f = field.Field(opts)
-				-- 		end)
-				-- 		print(">")
-				-- 	end)
-				-- end)
+				describe("and a value and a default which have different types", function()
+					-- 	local opts = {
+					-- 		name = "test_field",
+					-- 		default = 1,
+					-- 		value = "some_value",
+					-- 		description = "A test field",
+					-- 	}
+					--
+					-- 	it("fails with an error", function()
+					-- 		print(">")
+					-- 		assert.has_error(function()
+					-- 			local f = field.Field(opts)
+					-- 		end)
+					-- 		print(">")
+					-- 	end)
+				end)
 			end)
 			describe("when opts is not a table", function()
 				it("fails with an error", function()
@@ -124,6 +126,36 @@ describe("#ulf.confkit.field", function()
 				-- assert.has_error(function()
 				-- 	field.Field({ default = "some_value", type = "string", description = 1 }) ---@diagnostic disable-line: missing-fields
 				-- end)
+			end)
+		end)
+		describe("types", function()
+			describe("string", function()
+				it("fails when string length exceeds maxlen", function()
+					assert.has_error(function()
+						local f = field.Field({
+							name = "test_field",
+							default = "default_value",
+							description = "A test field",
+							type = "string",
+							attributes = {
+								maxlen = 10,
+							},
+						})
+					end, "Field 'test_field' errors: string length must be lower than 10 [value=default_value]")
+				end)
+				it("fails when string does not match pattern", function()
+					assert.has_error(function()
+						local f = field.Field({
+							name = "test_field",
+							default = "default_value",
+							description = "A test field",
+							type = "string",
+							attributes = {
+								pattern = "^some_value",
+							},
+						})
+					end, "Field 'test_field' errors: string must match pattern '^some_value' [value=default_value]")
+				end)
 			end)
 		end)
 	end)
@@ -170,6 +202,16 @@ describe("#ulf.confkit.field", function()
 			end)
 		end)
 	end)
+	describe("parse", function()
+		it("returns a field when basic conditions are met", function()
+			local f = field.Field.parse("severity", {
+				"debug",
+				"severity level",
+			})
+			assert(f)
+		end)
+	end)
+
 	describe("validate_base", function()
 		it("returns true when basic conditions are met", function()
 			local ok, err = field.validate_base(H.field_mock({

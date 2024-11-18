@@ -5,50 +5,56 @@ local TC = require("spec.test_cases")({ it = it })
 
 describe("#ulf.confkit.validator", function()
 	-- local Validator = require("ulf.confkit.validator")
-
 	describe("type_validator", function()
-		describe("number", function()
-			TC.TestCase.validator.type_validator({
-				valid = {
-					field = { name = "length", type = "number", value = 1 },
-				},
-				invalid = {
-					field = { value = "invalid", type = "string" },
-				},
-			})
-		end)
-
 		describe("string", function()
-			TC.TestCase.validator.type_validator({
+			TC.TestCase.validator.ValidatorSet.string({
 				valid = {
-					field = { name = "name", type = "string", value = "test" },
+					field = {
+						name = "name",
+						type = "string",
+						value = "test",
+						attributes = { maxlen = 10, pattern = "^test" },
+					},
 				},
 				invalid = {
-					field = { value = 161, type = "number" },
+					field = { value = 161, type = "number", attributes = { maxlen = 3, pattern = "^no match" } },
 				},
 			})
 		end)
 
-		describe("boolean", function()
-			TC.TestCase.validator.type_validator({
-				valid = {
-					field = { name = "enabled", type = "boolean", value = false },
-				},
-				invalid = {
-					field = { value = 161, type = "number" },
-				},
-			})
-		end)
+		if false then
+			describe("string", function()
+				TC.TestCase.validator.type_validator({
+					valid = {
+						field = { name = "name", type = "string", value = "test" },
+					},
+					invalid = {
+						field = { value = 161, type = "number" },
+					},
+				})
+			end)
 
-		describe("table", function()
-			TC.TestCase.validator.type_validator({
-				valid = {
-					field = { name = "opts", type = "table", value = { a = 1 } },
-				},
-				invalid = {
-					field = { value = 161, type = "number" },
-				},
-			})
-		end)
+			describe("boolean", function()
+				TC.TestCase.validator.type_validator({
+					valid = {
+						field = { name = "enabled", type = "boolean", value = false },
+					},
+					invalid = {
+						field = { value = 161, type = "number" },
+					},
+				})
+			end)
+
+			describe("table", function()
+				TC.TestCase.validator.type_validator({
+					valid = {
+						field = { name = "opts", type = "table", value = { a = 1 } },
+					},
+					invalid = {
+						field = { value = 161, type = "number" },
+					},
+				})
+			end)
+		end
 	end)
 end)

@@ -32,11 +32,6 @@ local trim = require("ulf.lib.string.trimmer").trim
 local gsplit = require("ulf.lib.string.splitter").gsplit
 local dedent = require("ulf.lib.string.dedent").dedent
 
-local f = string.format
-local Validator = require("ulf.confkit.validator")
-local types = require("ulf.confkit.types")
-local make_message = require("ulf.lib.error").make_message
-
 ---@class ulf.confkit.spec.field
 M.field = {}
 
@@ -126,6 +121,41 @@ M.field.is_field_spec = function(t)
 	return true
 end
 
+--- The function is run before validation and ensures that sane defaults
+--- are set.
+---@param options ulf.confkit.field.FieldOptions
+---@return ulf.confkit.field.FieldOptions
+M.field.apply_defaults = function(options)
+	local type_from = options.value ~= nil and options.value or options.default ~= nil and options.default
+	if options.type == nil and type_from ~= nil then
+		options.type = type(type_from)
+	end
+	return options
+end
+
+--- The function is run before validation and ensures that sane defaults
+--- are set.
+---@param options ulf.confkit.field.FieldOptions
+---@param spec ulf.confkit.FieldSpec
+---@return ulf.confkit.field.FieldOptions
+M.field.parse_attributes = function(options, spec)
+	assert(options.type)
+
+	options.attributes = {}
+	local field_type = require("ulf.confkit.types").get(options.type)
+	if field_type then
+		for key, value in
+			pairs(spec --[[@as table<string,any>]])
+		do
+			if field_type.attributes[key] then
+				options.attributes[key] = value
+			end
+		end
+	end
+
+	return options
+end
+
 --- Parses a cfield table spec and returns an instance of cfield.
 ---
 --- Value is always the first list item. If the key 'value' is
@@ -133,46 +163,47 @@ end
 --- it is assumed that only a description is given and value can
 --- be optional set.
 ---
---- @param k string The key of the field
---- @param v ulf.confkit.FieldSpec: The value specification
+--- @param name string The key of the field
+--- @param spec ulf.confkit.FieldSpec: The value specification
 --- @return ulf.confkit.field.FieldOptions
-M.field.parse = function(k, v)
+M.field.parse = function(name, spec)
 	---@type ulf.confkit.field.FieldOptions
 	local options = {} ---@diagnostic disable-line: missing-fields
-	if not M.field.is_field_spec(v) then
-		return { field_type = Constants.FIELD_BEHAVIOUR.NON_FIELD }
+	if not M.field.is_field_spec(spec) then
+		return { behaviour = Constants.FIELD_BEHAVIOUR.NON_FIELD }
 	end
-	options.field_type = Constants.FIELD_BEHAVIOUR.MANDATORY_FIELD
-	options.name = k
-	options.context = v.context
+	options.behaviour = Constants.FIELD_BEHAVIOUR.MANDATORY_FIELD
+	options.name = name
+	options.context = spec.context
 
 	-- Extract value
 	---@type any
-	options.default = v[1]
+	options.default = spec[1]
 
 	-- P({"!!!!!!!!!!!!!", v_len = #v, v_1 = v[1], v_2 = v[2],})
-	if #v == 1 then
+	if #spec == 1 then
 		options.default = nil
-		options.field_type = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
-		options.description = v[1]
-	elseif #v == 2 then
-		if v[1] == nil then
+		options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
+		options.description = spec[1]
+	elseif #spec == 2 then
+		if spec[1] == nil then
 			options.default = nil
-			options.field_type = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
+			options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
 		end
-		options.description = v[2]
+		options.description = spec[2]
 	end
 
-	if v.fallback then
-		options.fallback = v.fallback
-		options.field_type = Constants.FIELD_BEHAVIOUR.FALLBACK_FIELD
+	if spec.fallback then
+		options.fallback = spec.fallback
+		options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK_FIELD
 	end
 
-	-- extract field type.
-	options.type = v.type or (options.default ~= nil and type(options.default)) -- Only determine type from default if it's not nil
+	options.type = spec.type
+	options = M.field.apply_defaults(options)
+	options = M.field.parse_attributes(options, spec)
 
 	options.description = dedent(M.field.normalize(options.description))
-	options.hook = v.hook
+	options.hook = spec.hook
 
 	return options
 end

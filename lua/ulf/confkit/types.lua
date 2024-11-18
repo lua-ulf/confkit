@@ -18,7 +18,7 @@ local M = {}
 local make_message = require("ulf.lib.error").make_message
 local Validator = require("ulf.confkit.validator")
 
----@alias ulf.confkit.types.field_attributes table<string,boolean> @map of possible field attributes
+---@alias ulf.confkit.types.field_attributes table<string,boolean|{[1]:string}> @map of possible field attributes
 
 ---@class ulf.confkit.types.FieldTypeOptions @Options for a field registration
 ---@field attributes? ulf.confkit.types.field_attributes @map of possible field attributes
@@ -58,7 +58,7 @@ local FieldTypeOptions = {}
 ---@field id string: A unique identifier for the field type.
 ---@field description string: A human-readable description of the field type, used for documentation and context.
 ---@field validators ulf.confkit.validator_fn[]: A list of validator functions that validate values assigned to fields of this type.
----@field opts ulf.confkit.types.FieldTypeOptions: Optional. Additional options that define specific behavior or constraints for the field type.
+---@field attributes? ulf.confkit.types.field_attributes: Optional. Options for validater functions
 ---@overload fun(id:string, description:string, validators:ulf.confkit.validator_fn[], opts:ulf.confkit.types.FieldTypeOptions?):ulf.confkit.types.FieldType
 M.FieldType = setmetatable({}, {
 	__call = function(t, ...)
@@ -78,7 +78,7 @@ function M.FieldType.new(id, description, validators, opts)
 		id = id,
 		description = description,
 		validators = validators,
-		opts = opts,
+		attributes = opts.attributes,
 	}, M.FieldType)
 end
 
@@ -89,17 +89,21 @@ end
 M.Registry = {
 	_fields = {
 		["string"] = M.FieldType("string", "basic string type", {
-			Validator.type_validator("string"),
-			Validator.string_validator,
+			Validator.ValidatorSet.string,
+		}, {
+			attributes = {
+				maxlen = { "Number" },
+				pattern = { "String" },
+			},
 		}),
 		["number"] = M.FieldType("number", "basic number type", {
-			Validator.type_validator("number"),
+			Validator.ValidatorSet.number,
 		}),
 		["boolean"] = M.FieldType("boolean", "basic boolean type", {
-			Validator.type_validator("boolean"),
+			Validator.ValidatorSet.boolean,
 		}),
 		["table"] = M.FieldType("table", "basic table type", {
-			Validator.type_validator("table"),
+			Validator.ValidatorSet.table,
 		}),
 	},
 }
@@ -120,7 +124,6 @@ M.register = function(id, description, validators, opts)
 		)
 	end
 
-	-- require("ulf.confkit.validator").register(name, validators)
 	M.Registry._fields[id] = M.FieldType(id, description, validators, opts)
 end
 
@@ -139,14 +142,6 @@ M.get = function(id)
 		error(make_message({ "ulf.confkit.types", "validate" }, "Field type '%s': invalid field id", tostring(id)))
 	end
 	return M.Registry._fields[id]
-end
-
-M.validate = function(id)
-	local field = M.get(id)
-
-	local messages = {}
-	for _, validator in ipairs(field.validators) do
-	end
 end
 
 return M

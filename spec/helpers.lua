@@ -6,6 +6,7 @@ local M = {}
 ---@field hook? function
 ---@field type? string
 ---@field fallback? string
+---@field attributes? table<string,any>
 ---@field value? any
 ---@field default? any
 
@@ -18,6 +19,7 @@ M.field_mock = function(opts)
 		hook = opts.hook,
 		fallback = opts.fallback,
 		type = opts.type,
+		attributes = opts.attributes,
 		value = opts.value,
 	}
 end
