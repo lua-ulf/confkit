@@ -32,6 +32,7 @@ describe("#ulf.confkit.spec", function()
 						"test_key",
 						{ "default", "A test description", maxlen = 10, pattern = "some_pat" }
 					)
+					assert(f)
 					assert.equal("default", f.default)
 					assert.equal("A test description", f.description)
 					assert.equal(10, f.attributes.maxlen)
@@ -40,6 +41,7 @@ describe("#ulf.confkit.spec", function()
 			end)
 			it("parses a field with value and description", function()
 				local f = spec.field.parse("test_key", { "default", "A test description" })
+				assert(f)
 				assert.equal("default", f.default)
 				assert.equal("A test description", f.description)
 				-- assert.equal("string", f.type)
@@ -47,6 +49,7 @@ describe("#ulf.confkit.spec", function()
 
 			it("parses a field with only description and type", function()
 				local f = spec.field.parse("test_key", { "A test description", type = "number" })
+				assert(f)
 				assert.equal(nil, f.value)
 				assert.equal(Constants.FIELD_BEHAVIOUR.OPTIONAL, f.behaviour)
 				assert.equal("A test description", f.description)
@@ -63,16 +66,17 @@ describe("#ulf.confkit.spec", function()
 				assert.Nil(f)
 			end)
 
-			it("parses a field when fallback is set", function()
-				local f = spec.field.parse("severity", { "debug", "some desc", fallback = "fallback_key" }) ---@diagnostic disable-line: assign-type-mismatch
-				assert.equal("fallback_key", f.fallback)
-			end)
+			-- it("parses a field when fallback is set", function()
+			-- 	local f = spec.field.parse("severity", { "debug", "some desc", fallback = "fallback_key" }) ---@diagnostic disable-line: assign-type-mismatch
+			-- 	assert.equal("fallback_key", f.fallback)
+			-- end)
 
 			it("parses a field when context is set", function()
 				local context = {
 					target = { obj = {} },
 				}
 				local f = spec.field.parse("severity", { "debug", "some desc", context = context }) ---@diagnostic disable-line: assign-type-mismatch
+				assert(f)
 				assert.equal(context, f.context)
 			end)
 
@@ -82,6 +86,7 @@ describe("#ulf.confkit.spec", function()
 						return 1
 					end
 					local f = spec.field.parse("severity", { "debug", "some desc", hook = hook })
+					assert(f)
 					assert.equal("severity", f.name)
 					assert.equal("debug", f.default)
 					assert.equal(Constants.FIELD_BEHAVIOUR.DEFAULT, f.behaviour)

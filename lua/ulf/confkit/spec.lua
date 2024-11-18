@@ -193,10 +193,10 @@ M.field.parse = function(name, spec)
 		options.description = spec[2]
 	end
 
-	if spec.fallback then
-		options.fallback = spec.fallback
-		options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK
-	end
+	-- if spec.fallback then
+	-- 	options.fallback = spec.fallback
+	-- 	options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK
+	-- end
 
 	options.type = spec.type
 	options = M.field.apply_defaults(options)
