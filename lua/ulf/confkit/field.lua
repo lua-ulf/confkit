@@ -15,11 +15,11 @@ local Constants = require("ulf.confkit.constants")
 ---@alias ulf.confkit.field.attributes table<string,any>
 ---@alias ulf.confkit.hook_fn fun(v:any):any
 
----@class ulf.confkit.field.FieldOptions @FieldOptions are options which are passed to the constructor to set initial values
+---@class ulf.confkit.field.FieldBase @FieldBase are basic attributes for options and an instance
 ---@field name string: The name of the field.
 ---@field default? any: The default value of the field.
 ---@field value? any: The value of the field.
----@field behaviour? ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field behaviour? number: The ID of the configuration field type.
 ---@field type? string: The Lua data type
 ---@field description string: The description of the field
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
@@ -27,18 +27,20 @@ local Constants = require("ulf.confkit.constants")
 ---@field context? ulf.confkit.field.context: Optional. A context for advanced behaviour
 --- field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
+---@class ulf.confkit.field.FieldOptions : ulf.confkit.field.FieldBase @FieldOptions are options which are passed to the constructor to set initial values
+
 ---@class ulf.confkit.cfield_optional
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 --- field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
----@class ulf.confkit.field.Field : ulf.confkit.cfield_optional
+---@class ulf.confkit.field.Field : ulf.confkit.field.FieldBase
 ---@field name string: The name of the field.
 ---@field default any: The default value of the field.
 ---nfield fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 ---@field value any: The value of the field.
 ---@field _default any: The real default value
 ---@field _value any: The real value writen to the table
----@field behaviour ulf.confkit.field_behaviour_type: The ID of the configuration field type.
+---@field behaviour number: The ID of the configuration field type.
 ---@field type string: The Lua data type
 ---@field description string: The description of the field
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
@@ -59,12 +61,17 @@ Field.FIELD_BEHAVIOUR = Constants.FIELD_BEHAVIOUR
 Field.NIL = Constants.NIL
 
 --- Instance method to check if a specific flag is set in the instance's behaviour
----@param f ulf.confkit.field.Field
+---@param field ulf.confkit.field.FieldBase
 ---@param flag number
 ---@return boolean True if the flag is set, false otherwise
-Field.has_flag = function(f, flag)
-	return f.behaviour % (flag + flag) >= flag
-	-- return (self.behaviour & flag) ~= 0
+Field.has_flag = function(field, flag)
+	return field.behaviour % (flag + flag) >= flag
+end
+
+---@param field ulf.confkit.field.FieldBase
+---@param flag number
+Field.set_flag = function(field, flag)
+	return Field.has_flag(field, flag) and field.behaviour or field.behaviour + flag
 end
 
 ---@type ulf.confkit.validator_fn
@@ -209,9 +216,16 @@ Field.accessors = {
 ---@param spec ulf.confkit.field.FieldOptions
 ---@return ulf.confkit.field.FieldOptions
 Field.apply_defaults = function(spec)
+	if not type(spec.behaviour) == "number" then
+		spec.behaviour = 0
+	end
+
 	local type_from = spec.value ~= Field.NIL and spec.value or spec.default
 	if spec.type == nil and type_from ~= nil then
 		spec.type = type(type_from)
+	end
+	if spec.value == nil and spec.default == nil then
+		spec.behaviour = Field.set_flag(spec, Field.FIELD_BEHAVIOUR.OPTIONAL)
 	end
 	-- if spec.value == nil then
 	-- 	spec._value = Field.NIL
@@ -231,6 +245,10 @@ function Field.new(opts)
 		)
 	)
 
+	P({
+		"Field.new>>>>>>>>>>> in opts",
+		opts = opts,
+	})
 	opts = Field.apply_defaults(opts)
 	M.validate(opts, { base = true })
 

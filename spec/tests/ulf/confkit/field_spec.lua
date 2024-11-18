@@ -60,14 +60,13 @@ describe("#ulf.confkit.field", function()
 				end)
 
 				describe("and a value and a default it creates a field", function()
-					local opts = {
+					local f = field.Field({
 						name = "test_field",
 						default = "default_value",
 						value = "some_value",
 						description = "A test field",
 						type = "string",
-					}
-					local f = field.Field(opts)
+					})
 
 					it("with a default set to the default", function()
 						assert.equal("default_value", f.default)
@@ -82,6 +81,27 @@ describe("#ulf.confkit.field", function()
 
 					it("with the correct type", function()
 						assert.equal("string", f.type)
+					end)
+				end)
+
+				describe("and no value and no default it creates an optional field", function()
+					local f = field.Field({
+						name = "test_field_optional",
+						description = "A test field",
+						type = "string",
+						behaviour = 0,
+					})
+					it("with the correct type", function()
+						assert.equal("string", f.type)
+					end)
+
+					it("returns nil as value", function()
+						assert.Nil(f.value)
+					end)
+
+					it("has  nil as value", function()
+						P("field", f)
+						assert(field.Field.has_flag(f, field.Field.FIELD_BEHAVIOUR.OPTIONAL))
 					end)
 				end)
 				--- FIXME: does not work
@@ -119,12 +139,14 @@ describe("#ulf.confkit.field", function()
 				end)
 			end)
 
-			it("fails when opts.description is not a string", function()
+			describe("when opts.description is not a string", function()
+				it("fails with an error", function()
 
-				---FIXME: fails
-				-- assert.has_error(function()
-				-- 	field.Field({ default = "some_value", type = "string", description = 1 }) ---@diagnostic disable-line: missing-fields
-				-- end)
+					---FIXME: fails
+					-- assert.has_error(function()
+					-- 	field.Field({ default = "some_value", type = "string", description = 1 }) ---@diagnostic disable-line: missing-fields
+					-- end)
+				end)
 			end)
 		end)
 		describe("types", function()

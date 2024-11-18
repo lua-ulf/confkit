@@ -4,7 +4,7 @@ local log = require("ulf.util.minilog").Logger.create({
 	severity = "trace",
 	multi_line = true,
 	targets = {
-		terminal = true,
+		terminal = false,
 	},
 })
 
