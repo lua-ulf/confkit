@@ -9,6 +9,7 @@ local M = {}
 ---@brief ]]
 
 local f = string.format
+local log = require("ulf.confkit.logger")
 
 --- A validator function validates a value
 ---@alias ulf.confkit.validator_fn fun(field:ulf.confkit.field.Field|ulf.confkit.field.FieldOptions,context:table<string,any>?):boolean,string?:boolean,string?
@@ -49,9 +50,9 @@ M.Util.create_validator = function(rules)
 				if not ok then
 					errors[#errors + 1] = err
 				end
-				P("M.Util.create_validator: function(...) validator result", rule.name, ok, err)
+				log.debug("M.Util.create_validator: function(...) validator result", rule.name, ok, err)
 			else
-				P("M.Util.create_validator: MISSING VALIDATOR")
+				log.debug("M.Util.create_validator: MISSING VALIDATOR")
 			end
 		end
 

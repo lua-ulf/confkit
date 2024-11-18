@@ -7,19 +7,21 @@ local M = {}
 ---@brief ]]
 
 ---@alias ulf.confkit.field_behaviour_type
----| 1 # Mandatory config field
----| 2 # Optional config field
----| 3 # Fallback config field
----| 10 # Non config field
+---| 0b0000 # Default config field
+---| 0b0001 # Mandatory config field
+---| 0b0010 # Optional config field
+---| 0b0100 # Readonly config field
+---| 0b1000 # Fallback config field
 
---- BEHAVIOUR!
----@class ulf.confkit.FieldBehaviour
-M.FIELD_BEHAVIOUR = {
-	MANDATORY_FIELD = 1,
-	OPTIONAL_FIELD = 2,
-	FALLBACK_FIELD = 3,
-	NON_FIELD = 10,
-}
 M.NIL = string.char(0)
 
+-- stylua: ignore
+---@class ulf.confkit.FieldBehaviour
+M.FIELD_BEHAVIOUR = {
+	DEFAULT  = 0b0000,
+	FALLBACK = 0b0001, -- 1 in binary
+	OPTIONAL = 0b0010, -- 2 in binary
+	READONLY = 0b0100, -- 4 in binary (example of adding another flag)
+	VALIDATE = 0b1000, -- 8 in binary (another example)
+}
 return M

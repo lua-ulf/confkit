@@ -24,4 +24,19 @@ M.field_mock = function(opts)
 	}
 end
 
+---comment
+---@param severity_name string
+M.severity_to_number = function(severity_name)
+	local smap = {
+		trace = 0,
+		debug = 1,
+		info = 2,
+		warn = 3,
+		error = 4,
+		off = 5,
+	}
+
+	return smap[severity_name]
+end
+
 return M

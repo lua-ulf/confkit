@@ -165,14 +165,14 @@ end
 ---
 --- @param name string The key of the field
 --- @param spec ulf.confkit.FieldSpec: The value specification
---- @return ulf.confkit.field.FieldOptions
+--- @return ulf.confkit.field.FieldOptions?
 M.field.parse = function(name, spec)
 	---@type ulf.confkit.field.FieldOptions
 	local options = {} ---@diagnostic disable-line: missing-fields
 	if not M.field.is_field_spec(spec) then
-		return { behaviour = Constants.FIELD_BEHAVIOUR.NON_FIELD }
+		return
 	end
-	options.behaviour = Constants.FIELD_BEHAVIOUR.MANDATORY_FIELD
+	options.behaviour = Constants.FIELD_BEHAVIOUR.DEFAULT
 	options.name = name
 	options.context = spec.context
 
@@ -183,19 +183,19 @@ M.field.parse = function(name, spec)
 	-- P({"!!!!!!!!!!!!!", v_len = #v, v_1 = v[1], v_2 = v[2],})
 	if #spec == 1 then
 		options.default = nil
-		options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
+		options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL
 		options.description = spec[1]
 	elseif #spec == 2 then
 		if spec[1] == nil then
 			options.default = nil
-			options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL_FIELD
+			options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL
 		end
 		options.description = spec[2]
 	end
 
 	if spec.fallback then
 		options.fallback = spec.fallback
-		options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK_FIELD
+		options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK
 	end
 
 	options.type = spec.type

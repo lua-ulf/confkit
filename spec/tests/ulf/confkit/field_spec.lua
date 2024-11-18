@@ -2,7 +2,6 @@ local assert = require("luassert")
 local H = require("spec.helpers")
 
 describe("#ulf.confkit.field", function()
-	local Constants = require("ulf.confkit.constants")
 	local field = require("ulf.confkit.field")
 
 	describe("Field", function()
@@ -21,7 +20,7 @@ describe("#ulf.confkit.field", function()
 					end)
 
 					it("with _value set to NIL", function()
-						assert.equal(Constants.NIL, f._value)
+						assert.equal(field.Field.NIL, f._value)
 					end)
 
 					it("with a value returning the default", function()
@@ -184,7 +183,7 @@ describe("#ulf.confkit.field", function()
 			assert.equal("debug", f.default)
 			assert.equal("info", f.value)
 			f.value = nil
-			assert.equal(Constants.NIL, f._value)
+			assert.equal(field.Field.NIL, f._value)
 			assert.equal("debug", f.value)
 		end)
 
@@ -201,7 +200,73 @@ describe("#ulf.confkit.field", function()
 				assert.equal("error", f.value)
 			end)
 		end)
+		describe("fallback value", function()
+			it("returns a value from fallback if fallback is set and no value is set", function()
+				local obj = {
+
+					severity = field.Field({
+						name = "severity",
+						value = "info",
+						description = "fallback severity level",
+					}),
+				}
+
+				assert.equal("info", obj.severity.value)
+				local f = field.Field({
+					name = "severity",
+					description = "severity level",
+					type = "string",
+					fallback = "obj.severity",
+					behaviour = field.Field.FIELD_BEHAVIOUR.FALLBACK,
+
+					context = {
+						target = obj.severity,
+					},
+				})
+
+				assert.equal("info", f.value)
+				f.value = "error"
+				assert.equal("error", f.value)
+				f.value = nil
+				assert.equal("info", f.value)
+			end)
+		end)
+		describe("fallback value with hooks", function()
+			it("returns a value from fallback if fallback is set and no value is set", function()
+				local obj = {
+
+					severity = field.Field({
+						name = "severity",
+						value = "info",
+						hook = H.severity_to_number,
+						type = "number",
+						description = "fallback severity level",
+					}),
+				}
+
+				assert.equal(2, obj.severity.value)
+				local f = field.Field({
+					name = "severity",
+					description = "severity level",
+					fallback = "obj.severity",
+					behaviour = field.Field.FIELD_BEHAVIOUR.FALLBACK,
+
+					hook = H.severity_to_number,
+					type = "number",
+					context = {
+						target = obj.severity,
+					},
+				})
+
+				assert.equal(2, f.value)
+				f.value = "error"
+				assert.equal(4, f.value)
+				f.value = nil
+				assert.equal(2, f.value)
+			end)
+		end)
 	end)
+
 	describe("parse", function()
 		it("returns a field when basic conditions are met", function()
 			local f = field.Field.parse("severity", {
@@ -257,16 +322,16 @@ describe("#ulf.confkit.field", function()
 			assert.False(ok)
 			assert.equal("Field 'severity' errors: field hook must be a function [value=nil]", err)
 		end)
-		it("returns false, err when fallback is not a string", function()
-			local ok, err = field.validate_base(H.field_mock({
-				name = "severity",
-				description = "severity level",
-				default = "debug",
-				type = "string",
-				fallback = 1, ---@diagnostic disable-line: assign-type-mismatch
-			}))
-			assert.False(ok)
-			assert.equal("Field 'severity' errors: field fallback must be a string [value=nil]", err)
-		end)
+		-- it("returns false, err when fallback is not a string", function()
+		-- 	local ok, err = field.validate_base(H.field_mock({
+		-- 		name = "severity",
+		-- 		description = "severity level",
+		-- 		default = "debug",
+		-- 		type = "string",
+		-- 		fallback = 1, ---@diagnostic disable-line: assign-type-mismatch
+		-- 	}))
+		-- 	assert.False(ok)
+		-- 	assert.equal("Field 'severity' errors: field fallback must be a string [value=nil]", err)
+		-- end)
 	end)
 end)
