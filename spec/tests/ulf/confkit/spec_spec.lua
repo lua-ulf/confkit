@@ -1,5 +1,5 @@
 local assert = require("luassert")
-local H = require("spec.helpers")
+-- local H = require("spec.helpers")
 
 describe("#ulf.confkit.spec", function()
 	local spec = require("ulf.confkit.spec")
@@ -57,7 +57,7 @@ describe("#ulf.confkit.spec", function()
 			end)
 
 			it("returns nil if no type is provided for fields without a value", function()
-				local f = spec.field.parse("test_key", { "A description for an optional field" })
+				local f = spec.field.parse("test_key", { "A description for an optional field without a type" })
 				assert.Nil(f)
 			end)
 

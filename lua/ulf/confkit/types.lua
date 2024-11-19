@@ -141,7 +141,7 @@ end
 ---@param id string
 ---@return ulf.confkit.types.FieldType
 M.get = function(id)
-	if not M.Registry._fields[id] then
+	if M.Registry._fields[id] == nil then
 		error(make_message({ "ulf.confkit.types", "validate" }, "Field type '%s': invalid field id", tostring(id)))
 	end
 	return M.Registry._fields[id]

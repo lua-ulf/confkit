@@ -172,28 +172,39 @@ Field.accessors = {
 	end,
 
 	value = function(t)
-		log.debug(f("Field.accessors.value: name=%s", t.name))
+		log.debug(
+			f(
+				"Field.accessors.value: name=%s _default=%s default=%s _value=%s",
+				t.name,
+				t._default,
+				t.default,
+				t._value
+			)
+		)
 
 		---@type any
 		local v
 
+		local msg = ""
+
 		if t._value == Field.NIL then
 			v = t.default
-			log.debug(f("Field.accessors.value: >>>>>>>>>>>> t._value == Field.NIL, using t.default=%s as value", v))
+			msg = "t._value is NIL, using t.default as return value"
 		else
 			v = t._value
-			log.debug(f("Field.accessors.value: !!!!!!!!!!!! t._value ~= Field.NIL, using t._value=%s as value", v))
+			msg = "using t._value as return value"
 		end
 
 		if t.hook then
 			-- if a fallback is configured and _value is NIL then do bit apply
 			-- the hook again!
 			if not (Field.has_flag(t, Field.FIELD_BEHAVIOUR.FALLBACK) and t._value == Field.NIL) then
-				log.debug(f("Field.accessors.value: t.hook ~= function, applying hook, %s", ""))
-				return t.hook(v)
+				msg = msg .. " applying HOOK"
+				v = t.hook(v)
 			end
 		end
-		log.debug(f("Field.accessors.value: FINAL value %s", v))
+
+		log.debug(f("Field.accessors.value: %s> FINAL value=%s", msg, v))
 		return v
 	end,
 }
@@ -202,7 +213,7 @@ Field.accessors = {
 ---@param spec ulf.confkit.field.FieldOptions
 ---@return ulf.confkit.field.FieldOptions
 Field.apply_defaults = function(spec)
-	if not type(spec.behaviour) == "number" then
+	if type(spec.behaviour) ~= "number" then
 		spec.behaviour = 0
 	end
 
@@ -238,7 +249,8 @@ function Field.new(opts)
 	local writers = {
 
 		value = function(t, v)
-			v = v or Field.NIL
+			v = v == nil and Field.NIL or v
+			log.debug(f("Field.writer: name=%s> value=%s", t.name, v))
 			t._value = v
 		end,
 	}
@@ -253,7 +265,7 @@ function Field.new(opts)
 		context = opts.context,
 		behaviour = type(opts.behaviour) == "number" and opts.behaviour or 0,
 		_default = opts.default,
-		_value = opts.value or Field.NIL,
+		_value = opts.value ~= nil and opts.value or Field.NIL,
 	}
 
 	local self = setmetatable(obj, {

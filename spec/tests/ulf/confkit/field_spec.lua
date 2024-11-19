@@ -57,7 +57,6 @@ describe("#ulf.confkit.field", function()
 						assert.equal("string", f.type)
 					end)
 				end)
-
 				describe("and a value and a default it creates a field", function()
 					local f = Field({
 						name = "test_field",
@@ -82,7 +81,6 @@ describe("#ulf.confkit.field", function()
 						assert.equal("string", f.type)
 					end)
 				end)
-
 				describe("and no value and no default it creates an optional field", function()
 					local f = Field({
 						name = "test_field_optional",
@@ -122,34 +120,60 @@ describe("#ulf.confkit.field", function()
 					-- 	end)
 				end)
 			end)
-			describe("when opts is not a table", function()
-				it("fails with an error", function()
-					assert.has_error(function()
-						Field("not_a_table") ---@diagnostic disable-line: param-type-mismatch
+			describe("error conditions", function()
+				describe("when opts is not a table", function()
+					it("fails with an error", function()
+						assert.has_error(function()
+							Field("not_a_table") ---@diagnostic disable-line: param-type-mismatch
+						end)
 					end)
 				end)
-			end)
-
-			describe("when opts.behaviour is not a number", function()
-				it("fails with an error", function()
-					assert.has_error(function()
-						Field({}) ---@diagnostic disable-line: missing-fields
+				describe("when opts.behaviour is not a number", function()
+					it("fails with an error", function()
+						assert.has_error(function()
+							Field({}) ---@diagnostic disable-line: missing-fields
+						end)
 					end)
 				end)
-			end)
+				describe("when opts.description is not a string", function()
+					it("fails with an error", function()
 
-			describe("when opts.description is not a string", function()
-				it("fails with an error", function()
-
-					---FIXME: fails
-					-- assert.has_error(function()
-					-- 	field.Field({ default = "some_value", type = "string", description = 1 }) ---@diagnostic disable-line: missing-fields
-					-- end)
+						---FIXME: fails
+						-- assert.has_error(function()
+						-- 	field.Field({ default = "some_value", type = "string", description = 1 }) ---@diagnostic disable-line: missing-fields
+						-- end)
+					end)
 				end)
 			end)
 		end)
 		describe("types", function()
+			describe("boolean", function()
+				it("writes a value when boolean field is optional", function()
+					local f = Field({
+						name = "boolean_field_optional",
+						description = "description boolean_field_optional",
+						type = "boolean",
+					})
+					assert.equal(nil, f.value)
+					f.value = true
+					assert.equal(true, f.value)
+
+					f.value = false
+					assert.equal(false, f.value)
+				end)
+			end)
 			describe("string", function()
+				it("writes a value when string field is optional", function()
+					local f = Field({
+						name = "string_field_optional",
+						description = "description string_field_optional",
+						type = "string",
+					})
+					assert.equal(nil, f.value)
+					f.value = "test"
+					assert.equal("test", f.value)
+				end)
+
 				it("fails when string length exceeds maxlen", function()
 					assert.has_error(function()
 						local f = Field({
@@ -179,7 +203,6 @@ describe("#ulf.confkit.field", function()
 			end)
 		end)
 	end)
-
 	describe("__newindex", function()
 		it("sets a value", function()
 			assert.has_no_error(function()
@@ -193,7 +216,6 @@ describe("#ulf.confkit.field", function()
 				assert.equal("info", f.value)
 			end)
 		end)
-
 		it("deletes a value", function()
 			local f = Field({
 				name = "severity",
@@ -207,7 +229,6 @@ describe("#ulf.confkit.field", function()
 			assert.equal(Field.NIL, f._value)
 			assert.equal("debug", f.value)
 		end)
-
 		describe("default value", function()
 			it("changing a default value returns it when value is not set", function()
 				local f = Field({
@@ -286,7 +307,6 @@ describe("#ulf.confkit.field", function()
 			end)
 		end)
 	end)
-
 	describe("parse", function()
 		it("returns a field when basic conditions are met", function()
 			local f = Field.parse("severity", {
@@ -296,7 +316,6 @@ describe("#ulf.confkit.field", function()
 			assert(f)
 		end)
 	end)
-
 	describe("validate_base", function()
 		it("returns true when basic conditions are met", function()
 			local ok, err = Field.validate_base(H.field_mock({

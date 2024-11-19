@@ -173,6 +173,7 @@ M.field.parse = function(name, spec)
 	---@type ulf.confkit.field.FieldOptions
 	local options = {} ---@diagnostic disable-line: missing-fields
 	if not M.field.is_field_spec(spec) then
+		log.debug(f("spec.field.parse: key='%s' is not a key spec, spec=", name), spec)
 		return
 	end
 
@@ -182,34 +183,50 @@ M.field.parse = function(name, spec)
 	options.name = name
 	options.context = spec.context
 	options.value = spec.value
+	options.hook = spec.hook
+	options.type = spec.type
 
 	-- Extract value
 	---@type any
 	options.default = spec[1]
 
+	local msg = ""
 	if #spec == 1 then
+		msg = "#spec==1"
 		options.default = nil
 		options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL
 		options.description = spec[1]
 	elseif #spec == 2 then
+		msg = "#spec==2"
 		if spec[1] == nil then
+			msg = "#spec==2 spec[1]==nil"
 			options.default = nil
 			options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL
 		end
 		options.description = spec[2]
 	end
+	options = M.field.apply_defaults(options)
+	options = M.field.parse_attributes(options, spec)
 
+	log.debug(
+		f(
+			"spec.field.parse: name='%s' result> %s description='%s' behaviour=%s default=%s value=%s type='%s' hook=%s",
+			options.name,
+			msg,
+			options.description,
+			options.behaviour,
+			options.default,
+			options.value,
+			options.type,
+			options.hook
+		)
+	)
 	-- if spec.fallback then
 	-- 	options.fallback = spec.fallback
 	-- 	options.behaviour = Constants.FIELD_BEHAVIOUR.FALLBACK
 	-- end
 
-	options.type = spec.type
-	options = M.field.apply_defaults(options)
-	options = M.field.parse_attributes(options, spec)
-
 	options.description = dedent(M.field.normalize(options.description))
-	options.hook = spec.hook
 
 	return options
 end
