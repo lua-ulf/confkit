@@ -31,6 +31,8 @@ local Constants = require("ulf.confkit.constants")
 local trim = require("ulf.lib.string.trimmer").trim
 local gsplit = require("ulf.lib.string.splitter").gsplit
 local dedent = require("ulf.lib.string.dedent").dedent
+local f = string.format
+local log = require("ulf.confkit.logger")
 
 ---@class ulf.confkit.spec.field
 M.field = {}
@@ -80,13 +82,14 @@ M.field = {}
 --- </code>---
 ---
 ---
----@class ulf.confkit.FieldSpec : ulf.confkit.cfield_optional @FieldSpec is a table for defining fields in a declarative manner
+---@class ulf.confkit.FieldSpec @FieldSpec is a table for defining fields in a declarative manner
 ---@field [1] string: The first list item is either a value or the description.
 ---@field [2]? string: The second list item is the description if the first list item has a value.
 ---@field type? string: Optional. Specifies the Lua data type.
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 ---@field context? {target:any}: Optional. A context for advanced behaviour
+---@field value? any: The value of the field.
 
 ---@param s string
 ---@return string
@@ -113,7 +116,7 @@ M.field.is_field_spec = function(t)
 	end
 
 	if #t == 1 then
-		if t.type == nil then
+		if t.type == nil and t.value == nil then
 			return false
 		end
 	end
@@ -172,15 +175,18 @@ M.field.parse = function(name, spec)
 	if not M.field.is_field_spec(spec) then
 		return
 	end
+
+	-- log.debug(f( "spec.field.parse: called, name=%s #spec=%s, spec[1]=%s ", name, #spec, (type(spec) == "table" and #spec > 0 and spec[1]) or "" ))
+
 	options.behaviour = Constants.FIELD_BEHAVIOUR.DEFAULT
 	options.name = name
 	options.context = spec.context
+	options.value = spec.value
 
 	-- Extract value
 	---@type any
 	options.default = spec[1]
 
-	-- P({"!!!!!!!!!!!!!", v_len = #v, v_1 = v[1], v_2 = v[2],})
 	if #spec == 1 then
 		options.default = nil
 		options.behaviour = Constants.FIELD_BEHAVIOUR.OPTIONAL

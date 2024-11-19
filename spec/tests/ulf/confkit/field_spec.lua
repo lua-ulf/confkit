@@ -2,13 +2,13 @@ local assert = require("luassert")
 local H = require("spec.helpers")
 
 describe("#ulf.confkit.field", function()
-	local field = require("ulf.confkit.field")
+	local Field = require("ulf.confkit.field")
 
 	describe("Field", function()
 		describe("Field.new", function()
 			describe("with required attributes", function()
 				describe("and a default value it creates a field", function()
-					local f = field.Field({
+					local f = Field({
 						name = "test_field",
 						default = "default_value",
 						description = "A test field",
@@ -20,7 +20,7 @@ describe("#ulf.confkit.field", function()
 					end)
 
 					it("with _value set to NIL", function()
-						assert.equal(field.Field.NIL, f._value)
+						assert.equal(Field.NIL, f._value)
 					end)
 
 					it("with a value returning the default", function()
@@ -35,13 +35,12 @@ describe("#ulf.confkit.field", function()
 					end)
 				end)
 				describe("and a value it creates a field", function()
-					local opts = {
+					local f = Field({
 						name = "test_field",
 						value = "some_value",
 						description = "A test field",
 						type = "string",
-					}
-					local f = field.Field(opts)
+					})
 
 					it("with a default value returning nil", function()
 						assert.equal(nil, f.default)
@@ -60,7 +59,7 @@ describe("#ulf.confkit.field", function()
 				end)
 
 				describe("and a value and a default it creates a field", function()
-					local f = field.Field({
+					local f = Field({
 						name = "test_field",
 						default = "default_value",
 						value = "some_value",
@@ -85,7 +84,7 @@ describe("#ulf.confkit.field", function()
 				end)
 
 				describe("and no value and no default it creates an optional field", function()
-					local f = field.Field({
+					local f = Field({
 						name = "test_field_optional",
 						description = "A test field",
 						type = "string",
@@ -101,7 +100,7 @@ describe("#ulf.confkit.field", function()
 
 					it("has  nil as value", function()
 						P("field", f)
-						assert(field.Field.has_flag(f, field.Field.FIELD_BEHAVIOUR.OPTIONAL))
+						assert(Field.has_flag(f, Field.FIELD_BEHAVIOUR.OPTIONAL))
 					end)
 				end)
 				--- FIXME: does not work
@@ -126,7 +125,7 @@ describe("#ulf.confkit.field", function()
 			describe("when opts is not a table", function()
 				it("fails with an error", function()
 					assert.has_error(function()
-						field.Field("not_a_table") ---@diagnostic disable-line: param-type-mismatch
+						Field("not_a_table") ---@diagnostic disable-line: param-type-mismatch
 					end)
 				end)
 			end)
@@ -134,7 +133,7 @@ describe("#ulf.confkit.field", function()
 			describe("when opts.behaviour is not a number", function()
 				it("fails with an error", function()
 					assert.has_error(function()
-						field.Field({}) ---@diagnostic disable-line: missing-fields
+						Field({}) ---@diagnostic disable-line: missing-fields
 					end)
 				end)
 			end)
@@ -153,7 +152,7 @@ describe("#ulf.confkit.field", function()
 			describe("string", function()
 				it("fails when string length exceeds maxlen", function()
 					assert.has_error(function()
-						local f = field.Field({
+						local f = Field({
 							name = "test_field",
 							default = "default_value",
 							description = "A test field",
@@ -166,7 +165,7 @@ describe("#ulf.confkit.field", function()
 				end)
 				it("fails when string does not match pattern", function()
 					assert.has_error(function()
-						local f = field.Field({
+						local f = Field({
 							name = "test_field",
 							default = "default_value",
 							description = "A test field",
@@ -184,7 +183,7 @@ describe("#ulf.confkit.field", function()
 	describe("__newindex", function()
 		it("sets a value", function()
 			assert.has_no_error(function()
-				local f = field.Field({
+				local f = Field({
 					name = "severity",
 					default = "debug",
 					description = "severity level",
@@ -196,7 +195,7 @@ describe("#ulf.confkit.field", function()
 		end)
 
 		it("deletes a value", function()
-			local f = field.Field({
+			local f = Field({
 				name = "severity",
 				default = "debug",
 				description = "severity level",
@@ -205,13 +204,13 @@ describe("#ulf.confkit.field", function()
 			assert.equal("debug", f.default)
 			assert.equal("info", f.value)
 			f.value = nil
-			assert.equal(field.Field.NIL, f._value)
+			assert.equal(Field.NIL, f._value)
 			assert.equal("debug", f.value)
 		end)
 
 		describe("default value", function()
 			it("changing a default value returns it when value is not set", function()
-				local f = field.Field({
+				local f = Field({
 					name = "severity",
 					default = "debug",
 					description = "severity level",
@@ -226,7 +225,7 @@ describe("#ulf.confkit.field", function()
 			it("returns a value from fallback if fallback is set and no value is set", function()
 				local obj = {
 
-					severity = field.Field({
+					severity = Field({
 						name = "severity",
 						value = "info",
 						description = "fallback severity level",
@@ -234,12 +233,12 @@ describe("#ulf.confkit.field", function()
 				}
 
 				assert.equal("info", obj.severity.value)
-				local f = field.Field({
+				local f = Field({
 					name = "severity",
 					description = "severity level",
 					type = "string",
 					fallback = "obj.severity",
-					behaviour = field.Field.FIELD_BEHAVIOUR.FALLBACK,
+					behaviour = Field.FIELD_BEHAVIOUR.FALLBACK,
 
 					context = {
 						target = obj.severity,
@@ -257,7 +256,7 @@ describe("#ulf.confkit.field", function()
 			it("returns a value from fallback if fallback is set and no value is set", function()
 				local obj = {
 
-					severity = field.Field({
+					severity = Field({
 						name = "severity",
 						value = "info",
 						hook = H.severity_to_number,
@@ -267,12 +266,11 @@ describe("#ulf.confkit.field", function()
 				}
 
 				assert.equal(2, obj.severity.value)
-				local f = field.Field({
+				local f = Field({
 					name = "severity",
 					description = "severity level",
 					fallback = "obj.severity",
-					behaviour = field.Field.FIELD_BEHAVIOUR.FALLBACK,
-
+					behaviour = Field.FIELD_BEHAVIOUR.FALLBACK,
 					hook = H.severity_to_number,
 					type = "number",
 					context = {
@@ -291,7 +289,7 @@ describe("#ulf.confkit.field", function()
 
 	describe("parse", function()
 		it("returns a field when basic conditions are met", function()
-			local f = field.Field.parse("severity", {
+			local f = Field.parse("severity", {
 				"debug",
 				"severity level",
 			})
@@ -301,7 +299,7 @@ describe("#ulf.confkit.field", function()
 
 	describe("validate_base", function()
 		it("returns true when basic conditions are met", function()
-			local ok, err = field.validate_base(H.field_mock({
+			local ok, err = Field.validate_base(H.field_mock({
 				name = "severity",
 				description = "severity level",
 				default = "debug",
@@ -312,7 +310,7 @@ describe("#ulf.confkit.field", function()
 		end)
 
 		it("returns false, err when description and name is missing", function()
-			local ok, err = field.validate_base(H.field_mock({
+			local ok, err = Field.validate_base(H.field_mock({
 				default = "debug",
 				type = "string",
 			}))
@@ -324,7 +322,7 @@ describe("#ulf.confkit.field", function()
 		end)
 
 		it("returns false, err when type is invalid", function()
-			local ok, err = field.validate_base(H.field_mock({
+			local ok, err = Field.validate_base(H.field_mock({
 				name = "severity",
 				description = "severity level",
 				default = "debug",
@@ -334,7 +332,7 @@ describe("#ulf.confkit.field", function()
 			assert.equal("Field 'severity' errors: field type 'no_type' is invalid [value=nil]", err)
 		end)
 		it("returns false, err when hook is not a function", function()
-			local ok, err = field.validate_base(H.field_mock({
+			local ok, err = Field.validate_base(H.field_mock({
 				name = "severity",
 				description = "severity level",
 				default = "debug",

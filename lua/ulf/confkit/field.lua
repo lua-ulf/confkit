@@ -1,6 +1,3 @@
----@class ulf.confkit.field
-local M = {}
-
 local f = string.format
 local Validator = require("ulf.confkit.validator")
 local types = require("ulf.confkit.types")
@@ -25,18 +22,14 @@ local Constants = require("ulf.confkit.constants")
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field attributes? ulf.confkit.field.attributes: Optional. Options for validater functions
 ---@field context? ulf.confkit.field.context: Optional. A context for advanced behaviour
---- field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
 ---@class ulf.confkit.field.FieldOptions : ulf.confkit.field.FieldBase @FieldOptions are options which are passed to the constructor to set initial values
-
----@class ulf.confkit.cfield_optional
----@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
---- field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 
 ---@class ulf.confkit.field.Field : ulf.confkit.field.FieldBase
 ---@field name string: The name of the field.
 ---@field default any: The default value of the field.
----nfield fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
+---@field fallback? string: Optional. Specifies a fallback path as a string, pointing to a node in the fallback context table. The fallback node’s value is used if the current field has no explicitly set value.
 ---@field value any: The value of the field.
 ---@field _default any: The real default value
 ---@field _value any: The real value writen to the table
@@ -46,7 +39,6 @@ local Constants = require("ulf.confkit.constants")
 ---@field hook? ulf.confkit.hook_fn: A hook function takes the original value and returns a "replacement" value
 ---@field context? ulf.confkit.field.context: Optional. A context for advanced behaviour
 ---@field attributes? ulf.confkit.field.attributes: Optional. Options for validater functions
----@field validate fun(self:ulf.confkit.field.FieldOptions):boolean,string?: Validates a field, returns true for success or false,errors in case of error
 ---@overload fun(self:ulf.confkit.field.FieldOptions):ulf.confkit.field.Field
 local Field = setmetatable({}, {
 	__call = function(t, ...)
@@ -54,7 +46,6 @@ local Field = setmetatable({}, {
 	end,
 })
 Field.__index = Field
-M.Field = Field
 
 Field.FIELD_BEHAVIOUR = Constants.FIELD_BEHAVIOUR
 
@@ -75,7 +66,7 @@ Field.set_flag = function(field, flag)
 end
 
 ---@type ulf.confkit.validator_fn
-M.validate_base = function(field)
+Field.validate_base = function(field)
 	local checks = {
 		name = {
 			valid = type(field.name) == "string",
@@ -97,14 +88,10 @@ M.validate_base = function(field)
 			valid = field.context == nil or (type(field.context) == "table" and type(field.context.target) == "table"),
 			message = "field context.target must be a table",
 		},
-
-		--- FIXME: rule does not work
-		-- value = {
-		-- 	valid = (field.value ~= nil and field.default ~= nil and type(field.value) == type(field.default)) or true,
-		-- 	message = "field default and field value must have the same type",
-		-- },
 	}
+
 	local valid = true
+
 	---@type string[]
 	local errors = {}
 
@@ -115,10 +102,6 @@ M.validate_base = function(field)
 		end
 	end
 
-	-- P({
-	-- 	"validate_base",
-	-- 	errors = errors,
-	-- })
 	return valid,
 		not valid and Validator.validation_error(field.name, field.value, "errors: " .. table.concat(errors, "\n"))
 			or nil
@@ -127,7 +110,7 @@ end
 ---comment
 ---@param field ulf.confkit.field.FieldOptions
 ---@param opts? {base:boolean?,value:boolean?}
-function M.validate(field, opts)
+function Field.validate(field, opts)
 	log.debug(f("field.validate: name=%s", field.name), opts)
 	opts = opts or {}
 
@@ -143,7 +126,7 @@ function M.validate(field, opts)
 	local valid = true
 
 	local _base_validation = function()
-		ok, err = M.validate_base(field)
+		ok, err = Field.validate_base(field)
 		if not ok then
 			error(err)
 		end
@@ -177,26 +160,29 @@ end
 Field.accessors = {
 
 	default = function(t)
-		log.debug(f("Field.accessors.default: name=%s >>>>>>>>>>>>>>>>>>>>>>>>", t.name))
+		log.debug(
+			f("Field.accessors.default: name=%s _default=%s behaviour=%s", t.name, t._default, t.behaviour),
+			t.context
+		)
 		if Field.has_flag(t, Field.FIELD_BEHAVIOUR.FALLBACK) then
-			log.debug(f("Field.accessors.default: FALLBACK v=%s", t.context.target.value), t)
+			log.debug(f("Field.accessors.default: FALLBACK flag set context.target.value=%s", t.context.target.value))
 			return t.context.target.value
 		end
 		return t._default
 	end,
+
 	value = function(t)
-		log.debug(f("Field.accessors.value: name=%s >>>>>>>>>>>>>>>>>>>>>>>", t.name))
+		log.debug(f("Field.accessors.value: name=%s", t.name))
 
 		---@type any
 		local v
 
-		log.debug(f("Field.accessors.value: DEFAULT v=%s", v))
 		if t._value == Field.NIL then
 			v = t.default
-			log.debug(f("Field.accessors.value: t._value == Field.NIL, using t.default=%s as value", v))
+			log.debug(f("Field.accessors.value: >>>>>>>>>>>> t._value == Field.NIL, using t.default=%s as value", v))
 		else
 			v = t._value
-			log.debug(f("Field.accessors.value: t._value ~= Field.NIL, using t._value=%s as value", v))
+			log.debug(f("Field.accessors.value: !!!!!!!!!!!! t._value ~= Field.NIL, using t._value=%s as value", v))
 		end
 
 		if t.hook then
@@ -245,12 +231,8 @@ function Field.new(opts)
 		)
 	)
 
-	P({
-		"Field.new>>>>>>>>>>> in opts",
-		opts = opts,
-	})
 	opts = Field.apply_defaults(opts)
-	M.validate(opts, { base = true })
+	Field.validate(opts, { base = true })
 
 	---@type table<string,fun(t:ulf.confkit.field.Field,v:any):any>
 	local writers = {
@@ -265,14 +247,13 @@ function Field.new(opts)
 		name = opts.name,
 		description = opts.description,
 		type = opts.type,
-		-- fallback = opts.fallback,
-		-- default = opts.default,
-		_default = opts.default,
-		_value = opts.value or Field.NIL,
+		fallback = opts.fallback,
 		hook = opts.hook,
-		behaviour = type(opts.behaviour) == "number" and opts.behaviour or 0,
 		attributes = opts.attributes,
 		context = opts.context,
+		behaviour = type(opts.behaviour) == "number" and opts.behaviour or 0,
+		_default = opts.default,
+		_value = opts.value or Field.NIL,
 	}
 
 	local self = setmetatable(obj, {
@@ -282,10 +263,6 @@ function Field.new(opts)
 		---@return any
 		__index = function(t, k)
 			log.debug(f("Field.__index: k=%s", k))
-			-- local v = rawget(t, k) or rawget(Field, k)
-			-- if v ~= nil then
-			-- 	return v
-			-- end
 			local accessor = Field.accessors[k]
 			if type(accessor) == "function" then
 				return accessor(t)
@@ -307,14 +284,9 @@ function Field.new(opts)
 		__class = { name = "ulf.confkit.Field" },
 	})
 
-	M.validate(self, { value = true })
+	Field.validate(self, { value = true })
 	return self
 end
-
----comment
----@param context {target:any}: Optional. A context for advanced behaviour
----@param fn fun()
-function Field:with(context, fn) end
 
 ---@param name string
 ---@param spec ulf.confkit.FieldSpec
@@ -323,4 +295,4 @@ function Field.parse(name, spec)
 	return Field(require("ulf.confkit.spec").field.parse(name, spec))
 end
 
-return M
+return Field

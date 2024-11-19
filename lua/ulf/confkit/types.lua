@@ -79,7 +79,10 @@ function M.FieldType.new(id, description, validators, opts)
 		description = description,
 		validators = validators,
 		attributes = opts.attributes,
-	}, M.FieldType)
+	}, {
+		__index = M.FieldType,
+		__class = { name = "ulf.confkit.FieldType" },
+	})
 end
 
 ---@alias ulf.confkit.types.field_map table<string,ulf.confkit.types.FieldType>
