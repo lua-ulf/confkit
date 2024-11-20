@@ -1,0 +1,89 @@
+local M = {}
+
+---@brief [[
+---
+---- Using Fields
+---
+--- (1) The common format for defining fields is:
+---
+--- <code=text>
+---   [1]: default value | description
+---   [2]: description | nil
+---   [spec_key]: [spec_value]
+--- </code>
+---
+--- Example:
+--- <code=lua>
+---   local field = {
+---     "default",
+---     "description for field",
+---     value = "my string"
+---   }
+---</code>
+---
+--- The example above defines a string field with a default value of `default` and
+--- a value which is `my string`.
+---
+--- Alternative you can leave out the default value if you want to return `nil`
+--- when no value is set. This is called an optional field and it is necessary
+--- to set a type for such a field.
+---
+--- Example:
+--- <code=lua>
+---   local field = {
+---     "description for field",
+---     type = "string"
+---   }
+---</code>
+---
+--- (2) Behaviour
+---
+--- Each field behaves in a certain way. This is defined using a bitmask with
+--- the field `field.behaviour`. In general you do not need to set the behaviour
+--- because it is detected automatically.
+---
+---
+--- Example:
+--- <code=lua>
+---   DEFAULT  = 0b0000,
+---   FALLBACK = 0b0001, -- 1 in binary
+---   OPTIONAL = 0b0010, -- 2 in binary
+---   READONLY = 0b0100, -- 4 in binary (example of adding another flag)
+--- </code>
+---
+--- See |ulf.confkit.constants.FIELD_BEHAVIOUR()|
+---
+---
+--- (3) Types
+---
+--- `ConfKit` includes the following field types: string, number, boolean, table. You can add
+--- new fiels by registering them using `require("ulf.confkit.types").register(id, description, validators, opts)`.
+--- Register takes a unique id, description, a list of validators and optional settings.
+---
+--- Each `FieldType` must have a unique id.
+---
+--- Example:
+--- <code=lua>
+---   require("ulf.confkit.types").register("choice", "provides a field which allows choices between: a and b", {
+---     function(field)
+---       if not table.contains(field.value, field.attributes.choices) then
+---         return false, "error: allowed values a or b"
+---       end
+---       return true
+---     end,
+---   }, {
+---     attributes = {
+---       choices = {"table"},
+---     },
+---   })
+--- </code>
+---
+---
+---
+---
+---
+---@brief ]]
+
+---@config { ["name"] = "Usage" }
+
+return M

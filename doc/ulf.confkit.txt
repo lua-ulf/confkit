@@ -1,4 +1,181 @@
 ================================================================================
+- Using Fields
+
+(1) The common format for defining fields is:
+
+>text
+  [1]: default value | description
+  [2]: description | nil
+  [spec_key]: [spec_value]
+<
+
+Example:
+>lua
+  local field = {
+    "default",
+    "description for field",
+    value = "my string"
+  }
+<
+
+The example above defines a string field with a default value of `default` and
+a value which is `my string`.
+
+Alternative you can leave out the default value if you want to return `nil`
+when no value is set. This is called an optional field and it is necessary to
+set a type for such a field.
+
+Example:
+>lua
+  local field = {
+    "description for field",
+    type = "string"
+  }
+<
+
+(2) Behaviour
+
+Each field behaves in a certain way. This is defined using a bitmask with the
+field `field.behaviour`. In general you do not need to set the behaviour
+because it is detected automatically.
+
+
+Example:
+>lua
+  DEFAULT  = 0b0000,
+  FALLBACK = 0b0001, -- 1 in binary
+  OPTIONAL = 0b0010, -- 2 in binary
+  READONLY = 0b0100, -- 4 in binary (example of adding another flag)
+<
+
+See |ulf.confkit.constants.FIELD_BEHAVIOUR()|
+
+
+(3) Types
+
+`ConfKit` includes the following field types: string, number, boolean, table.
+You can add new fiels by registering them using
+`require("ulf.confkit.types").register(id, description, validators, opts)`.
+Register takes a unique id, description, a list of validators and optional
+settings.
+
+Each `FieldType` must have a unique id.
+
+Example:
+>lua
+  require("ulf.confkit.types").register("choice", "provides a field which allows choices between: a and b", {
+    function(field)
+      if not table.contains(field.value, field.attributes.choices) then
+        return false, "error: allowed values a or b"
+      end
+      return true
+    end,
+  }, {
+    attributes = {
+      choices = {"table"},
+    },
+  })
+<
+
+
+
+
+
+
+
+================================================================================
+UTIL                                                          *ulf.confkit.util*
+
+Utilities for `ConfKit`
+
+M.is_ctable({t})                                *ulf.confkit.util.is_ctable()*
+    comment
+
+
+    Parameters: ~
+        {t} (table)
+
+    Return: ~
+        boolean
+
+
+M.is_config_block({t})                    *ulf.confkit.util.is_config_block()*
+    comment
+
+
+    Parameters: ~
+        {t} (table)
+
+    Return: ~
+        boolean
+
+
+M.is_field({t})                                  *ulf.confkit.util.is_field()*
+    comment
+
+
+    Parameters: ~
+        {t} (table)
+
+    Return: ~
+        boolean
+
+
+M.is_field_type({t})                        *ulf.confkit.util.is_field_type()*
+    comment
+
+
+    Parameters: ~
+        {t} (table)
+
+    Return: ~
+        boolean
+
+
+M.is_schema()                                   *ulf.confkit.util.is_schema()*
+
+
+    Return: ~
+        boolean
+
+
+M.is_config_class()                       *ulf.confkit.util.is_config_class()*
+
+
+    Return: ~
+        boolean
+
+
+
+================================================================================
+CONSTANTS                                                *ulf.confkit.constants*
+
+`ulf.confkit.constants` contains global constants for `ConfKit`
+
+
+ulf.confkit.constants                                  *ulf.confkit.constants*
+
+
+
+M.NIL()                                          *ulf.confkit.constants.NIL()*
+    | 0b0000 # Default config field | 0b0001 # Mandatory config field | 0b0010
+    # Optional config field | 0b0100 # Readonly config field
+
+
+
+M.FIELD_BEHAVIOUR()                  *ulf.confkit.constants.FIELD_BEHAVIOUR()*
+
+
+    Options: ~
+        {DEFAULT}  (number)  default field behaviour is a field with a default
+                             value
+        {FALLBACK} (number)  enables fallback value lookup of foreign fields
+        {OPTIONAL} (number)  when optional is set default and value can be nil
+        {READONLY} (number)  readonly cannot be written to
+
+
+
+================================================================================
 INTRODUCTION                                                       *ulf.confkit*
 
 ConfKit ...
@@ -38,12 +215,9 @@ ulf.confkit.types.FieldType                      *ulf.confkit.types.FieldType*
                                                             validate values
                                                             assigned to fields
                                                             of this type.
-        {opts}        (ulf.confkit.types.FieldTypeOptions)  Optional.
-                                                            Additional options
-                                                            that define
-                                                            specific behavior
-                                                            or constraints for
-                                                            the field type.
+        {attributes}  (ulf.confkit.types.field_attributes)  Optional. Options
+                                                            for validater
+                                                            functions
 
 
 ulf.confkit.types.Registry                        *ulf.confkit.types.Registry*
@@ -126,6 +300,10 @@ General sequence processing for a field:
 
 
 ulf.confkit.spec                                            *ulf.confkit.spec*
+
+
+
+ulf.confkit.spec.field                                *ulf.confkit.spec.field*
 
 
 

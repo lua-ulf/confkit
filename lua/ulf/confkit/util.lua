@@ -1,5 +1,12 @@
 local M = {}
 
+---@tag ulf.confkit.util
+---@config { ["module"] = "ulf.confkit.util" }
+
+---@brief [[
+--- Utilities for `ConfKit`
+---@brief ]]
+
 ---comment
 ---@param t table
 ---@param name string

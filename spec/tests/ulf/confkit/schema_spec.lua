@@ -214,39 +214,37 @@ describe("#ulf.confkit.schema", function()
 			})
 
 			-- assert.equal(1, schema.logger.default.severity_logger.value)
-			if false then
-				TestCase.Schema.validate(schema, {
-					fields = {
+			TestCase.Schema.validate(schema, {
+				fields = {
 
-						["version"] = {
-							name = "version",
-							value = "1.1.0",
-							type = "string",
-							description = [[This is the schema version]],
-						},
-
-						["global.severity_global"] = {
-							name = "severity",
-							value = 2,
-							type = "number",
-							description = "Global severity level",
-						},
-
-						["logger.default.severity_logger"] = {
-							name = "severity",
-							-- value = 1,
-							type = "number",
-							description = "Logger severity level",
-							behaviour = {
-								Field.FIELD_BEHAVIOUR.FALLBACK,
-							},
-							-- context = {
-							-- 	target = schema.global.severity,
-							-- },
-						},
+					["version"] = {
+						name = "version",
+						value = "1.1.0",
+						type = "string",
+						description = [[This is the schema version]],
 					},
-				})
-			end
+
+					["global.severity_global"] = {
+						name = "severity",
+						value = 2,
+						type = "number",
+						description = "Global severity level",
+					},
+
+					["logger.default.severity_logger"] = {
+						name = "severity",
+						-- value = 1,
+						type = "number",
+						description = "Logger severity level",
+						behaviour = {
+							Field.FIELD_BEHAVIOUR.FALLBACK,
+						},
+						-- context = {
+						-- 	target = schema.global.severity,
+						-- },
+					},
+				},
+			})
 			print("<<<<<<<")
 		end)
 	end)
@@ -256,46 +254,34 @@ describe("#ulf.confkit.schema", function()
 		---@field severity ulf.confkit.field.Field
 
 		---@class test.TestSchema.logger.default : ulf.confkit.schema.Schema
+		---@field filename ulf.confkit.field.Field
 		---@field severity ulf.confkit.field.Field
 
 		---@class test.TestSchema.logger : ulf.confkit.schema.Schema
 		---@field default test.TestSchema.logger.default
 
+    -- stylua: ignore
 		---@class test.TestSchema : ulf.confkit.schema.Schema
 		---@field version ulf.confkit.field.Field
+		---@field enabled ulf.confkit.field.Field
+		---@field opts ulf.confkit.field.Field
+		---@field priority ulf.confkit.field.Field
 		---@field tag ulf.confkit.field.Field
 		---@field logger test.TestSchema.logger
 		---@field global test.TestSchema.global
 		local TestSchema = Schema({
-			version = {
-				[[This is the schema version]],
-				value = "1.1.0",
-			},
-			enabled = {
-				true,
-				[[This is an boolean tag]],
-			},
-
-			tag = {
-				[[This is an optional tag]],
-				type = "string",
-			},
+			version = {[[This is the schema version]], value = "1.1.0",},
+			enabled = {true, [[This is an boolean tag]],},
+			priority = {10, [[This is the priority field]], type = "number",},
+			opts = {[[This is the opts field]], type = "table",},
+			tag = {[[This is an optional tag]], type = "string",},
 			global = Schema({
-				severity = {
-					"info",
-					"Global severity level",
-					hook = H.severity_to_number,
-					type = "number",
-				},
+				severity = {"info", "Global severity level", hook = H.severity_to_number, type = "number",},
 			}, "Global settings"),
 			logger = Schema({
-
 				default = Schema({
-					severity = {
-						"Logger severity level",
-						hook = H.severity_to_number,
-						type = "number",
-					},
+					filename = {"Logger filename", type = "string",},
+					severity = {"Logger severity level", hook = H.severity_to_number, type = "number",},
 				}, "Default logger settings"),
 			}, "Logger settings"),
 		})
@@ -323,10 +309,22 @@ describe("#ulf.confkit.schema", function()
 				TestSchema({
 					tag = "t1",
 					enabled = true,
+					priority = 100,
 					version = "2",
+					opts = {
+						timeout = 1000,
+					},
 				})
+				TestSchema.logger.default({
+					filename = "log",
+				})
+				assert.equal(100, TestSchema.priority.value)
 				assert.equal("t1", TestSchema.tag.value)
 				assert.equal("2", TestSchema.version.value)
+				assert.equal(true, TestSchema.enabled.value)
+				assert.same({ timeout = 1000 }, TestSchema.opts.value)
+
+				assert.equal("log", TestSchema.logger.default.filename.value)
 			end)
 		end)
 	end)
