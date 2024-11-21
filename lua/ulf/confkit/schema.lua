@@ -1,16 +1,16 @@
-local split = require("ulf.lib.string.splitter").split
-local deepcopy = require("ulf.lib.table").deepcopy
-local tbl_isempty = require("ulf.lib.table").tbl_isempty
-local tbl_get = require("ulf.lib.table").tbl_get
 local Field = require("ulf.confkit.field")
 local log = require("ulf.confkit.logger")
-
 local Traversal = require("ulf.confkit.traversal")
 local Spec = require("ulf.confkit.spec")
 local Util = require("ulf.confkit.util")
--- local is_schema = Util.is_schema
+
+local Lib = require("ulf.confkit.lib")
+local split = Lib.split
+local deepcopy = Lib.deepcopy
+local tbl_isempty = Lib.tbl_isempty
+local tbl_get = Lib.tbl_get
+
 local is_field = Util.is_field
--- local make_message = require("ulf.lib.error").make_message
 
 local f = string.format
 local unpack = table.unpack or unpack

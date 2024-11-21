@@ -28,10 +28,11 @@ local M = {}
 ---@brief ]]
 
 local Constants = require("ulf.confkit.constants")
+local Lib = require("ulf.confkit.lib")
+local dedent = Lib.dedent
+local trim = Lib.trim
+local gsplit = Lib.gsplit
 
-local trim = require("ulf.lib.string.trimmer").trim
-local gsplit = require("ulf.lib.string.splitter").gsplit
-local dedent = require("ulf.lib.string.dedent").dedent
 local f = string.format
 local log = require("ulf.confkit.logger")
 

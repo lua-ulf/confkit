@@ -7,6 +7,15 @@ local M = {}
 --- Utilities for `ConfKit`
 ---@brief ]]
 
+local ulf = {
+	lib = require("ulf.lib"),
+}
+
+local split = ulf.lib.string.split
+local deepcopy = ulf.lib.table.deepcopy
+local tbl_isempty = ulf.lib.table.tbl_isempty
+local tbl_get = ulf.lib.table.tbl_get
+
 ---comment
 ---@param t table
 ---@param name string
@@ -19,24 +28,25 @@ local function _is_type(t, name)
 	return false
 end
 
----comment
----@param t table
+---Returns true of `obj` is a `Field`.
+---@param obj table
 ---@return boolean
-function M.is_field(t)
-	return _is_type(t, "ulf.confkit.Field")
+function M.is_field(obj)
+	return _is_type(obj, "ulf.confkit.Field")
 end
 
----comment
----@param t table
+---Returns true of `obj` is a `FieldType`.
+---@param obj table
 ---@return boolean
-function M.is_field_type(t)
-	return _is_type(t, "ulf.confkit.FieldType")
+function M.is_field_type(obj)
+	return _is_type(obj, "ulf.confkit.FieldType")
 end
 
----@param t table
+---Returns true of `obj` is a `Schema`.
+---@param obj table
 ---@return boolean
-function M.is_schema(t)
-	return _is_type(t, "ulf.confkit.Schema")
+function M.is_schema(obj)
+	return _is_type(obj, "ulf.confkit.Schema")
 end
 
 return M

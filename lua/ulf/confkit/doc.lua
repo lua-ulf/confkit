@@ -1,3 +1,5 @@
+--- FIXME: This file is a temporaru file for writing documentation and testing
+--- tree-sitter-lua. Once docs are integrated to the relevant module delete this file.
 local M = {}
 
 ---@brief [[
