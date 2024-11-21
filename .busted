@@ -16,6 +16,7 @@ return {
 			"ulf.confkit.spec",
 			"ulf.confkit.util",
 			"ulf.confkit.schema",
+			"ulf.confkit.traversal",
 			"ulf.confkit.validator",
 			"ulf.confkit.block",
 		},
@@ -72,6 +73,11 @@ return {
 		verbose = true,
 	},
 
+	["ulf.confkit.traversal"] = {
+		tags = "ulf.confkit.traversal",
+		ROOT = { "spec/tests" },
+		verbose = true,
+	},
 	["ulf.confkit.spec"] = {
 		tags = "ulf.confkit.spec",
 		ROOT = { "spec/tests" },

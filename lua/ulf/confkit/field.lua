@@ -5,6 +5,8 @@ local make_message = require("ulf.lib.error").make_message
 
 local log = require("ulf.confkit.logger")
 local Constants = require("ulf.confkit.constants")
+local Util = require("ulf.confkit.util")
+local is_field = Util.is_field
 
 ---@class ulf.confkit.field.context
 ---@field target table: The target table for fetching a fallback value
@@ -108,7 +110,7 @@ Field.validate_base = function(field)
 end
 
 ---comment
----@param field ulf.confkit.field.FieldOptions
+---@param field ulf.confkit.field.FieldOptions|ulf.confkit.field.Field
 ---@param opts? {base:boolean?,value:boolean?}
 function Field.validate(field, opts)
 	log.debug(f("field.validate: name=%s", field.name), opts)
@@ -156,6 +158,62 @@ function Field.validate(field, opts)
 	end
 end
 
+---comment
+---@param self ulf.confkit.field.Field
+---@param target table
+Field.set_fallback = function(self, target)
+	self._default = nil
+	self.context.target = target
+end
+
+--- Removes all values from a field. If `default` is given a new default value is
+--- set
+---@param self ulf.confkit.field.Field
+---@param default? any
+Field.clear = function(self, default)
+	self.context.target = nil
+	self._value = Field.NIL
+	self._default = default
+end
+
+---comment
+---@param self ulf.confkit.field.Field
+---@return boolean
+Field.is_fallback_routed = function(self)
+	return type(self.context) == "table" and type(self.context.target) == "table"
+end
+
+---comment
+---@param self ulf.confkit.field.Field
+---@return any
+Field.get_value = function(self)
+	log.debug(
+		f(
+			"Field.get_value.value: name=%s _default=%s default=%s _value=%s",
+			self.name,
+			self._default,
+			self.default,
+			self._value
+		)
+	)
+
+	---@type any
+	local v
+
+	local msg = ""
+
+	if self._value == Field.NIL then
+		v = self.default
+		msg = "t._value is NIL, using t.default as return value"
+	else
+		v = self._value
+		msg = "using t._value as return value"
+	end
+
+	log.debug(f("Field.get_value.value: %s> FINAL value=%s", msg, v))
+	return v
+end
+
 ---@type table<string,fun(t:ulf.confkit.field.Field):any>
 Field.accessors = {
 
@@ -164,47 +222,33 @@ Field.accessors = {
 			f("Field.accessors.default: name=%s _default=%s behaviour=%s", t.name, t._default, t.behaviour),
 			t.context
 		)
-		if Field.has_flag(t, Field.FIELD_BEHAVIOUR.FALLBACK) then
-			log.debug(f("Field.accessors.default: FALLBACK flag set context.target.value=%s", t.context.target.value))
-			return t.context.target.value
+
+		if t:is_fallback_routed() and t._value == Field.NIL then
+			log.debug(
+				f(
+					"Field.accessors.default: %s FALLBACK flag set context.target.value=%s",
+					t.name,
+					t.context.target.value
+				)
+			)
+
+			if is_field(t) then
+				return t.context.target:get_value()
+			else
+				-- whatever value is returned
+				return t.context.target
+			end
 		end
 		return t._default
 	end,
 
 	value = function(t)
-		log.debug(
-			f(
-				"Field.accessors.value: name=%s _default=%s default=%s _value=%s",
-				t.name,
-				t._default,
-				t.default,
-				t._value
-			)
-		)
-
-		---@type any
 		local v
-
-		local msg = ""
-
-		if t._value == Field.NIL then
-			v = t.default
-			msg = "t._value is NIL, using t.default as return value"
-		else
-			v = t._value
-			msg = "using t._value as return value"
-		end
+		v = t:get_value()
 
 		if t.hook then
-			-- if a fallback is configured and _value is NIL then do bit apply
-			-- the hook again!
-			if not (Field.has_flag(t, Field.FIELD_BEHAVIOUR.FALLBACK) and t._value == Field.NIL) then
-				msg = msg .. " applying HOOK"
-				v = t.hook(v)
-			end
+			v = t.hook(v)
 		end
-
-		log.debug(f("Field.accessors.value: %s> FINAL value=%s", msg, v))
 		return v
 	end,
 }
@@ -224,9 +268,7 @@ Field.apply_defaults = function(spec)
 	if spec.value == nil and spec.default == nil then
 		spec.behaviour = Field.set_flag(spec, Field.FIELD_BEHAVIOUR.OPTIONAL)
 	end
-	-- if spec.value == nil then
-	-- 	spec._value = Field.NIL
-	-- end
+
 	return spec
 end
 
@@ -262,7 +304,7 @@ function Field.new(opts)
 		fallback = opts.fallback,
 		hook = opts.hook,
 		attributes = opts.attributes,
-		context = opts.context,
+		context = opts.context or {},
 		behaviour = type(opts.behaviour) == "number" and opts.behaviour or 0,
 		_default = opts.default,
 		_value = opts.value ~= nil and opts.value or Field.NIL,
@@ -275,6 +317,11 @@ function Field.new(opts)
 		---@return any
 		__index = function(t, k)
 			log.debug(f("Field.__index: k=%s", k))
+
+			local v = rawget(t, k) or rawget(Field, k)
+			if v ~= nil then
+				return v
+			end
 			local accessor = Field.accessors[k]
 			if type(accessor) == "function" then
 				return accessor(t)
@@ -285,10 +332,10 @@ function Field.new(opts)
 		---@param k string
 		---@param v any
 		__newindex = function(t, k, v)
-			-- P("__newindex", k, v)
 			local writer = writers[k]
 			if writer then
 				writer(t, v)
+				Field.validate(t, { value = true })
 			else
 				rawset(t, k, v)
 			end

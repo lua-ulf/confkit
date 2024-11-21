@@ -1,9 +1,11 @@
 local split = require("ulf.lib.string.splitter").split
-local tbl_isempty = require("ulf.lib.table.tbl_lib").tbl_isempty
-local tbl_get = require("ulf.lib.table.tbl_lib").tbl_get
+local deepcopy = require("ulf.lib.table").deepcopy
+local tbl_isempty = require("ulf.lib.table").tbl_isempty
+local tbl_get = require("ulf.lib.table").tbl_get
 local Field = require("ulf.confkit.field")
 local log = require("ulf.confkit.logger")
 
+local Traversal = require("ulf.confkit.traversal")
 local Spec = require("ulf.confkit.spec")
 local Util = require("ulf.confkit.util")
 -- local is_schema = Util.is_schema
@@ -16,6 +18,13 @@ local unpack = table.unpack or unpack
 ---@alias ulf.confkit.schema.key_type
 ---| 1 # Field
 ---| 10 # Non Field
+
+---@class ulf.confkit.SchemaClassOptions @Options for the generated SchemaClass constructor
+---@field base table: Base class
+
+---@class ulf.confkit.SchemaClass : ulf.confkit.schema.Schema @SchemaClass is a generated class from a schema so that you can create separate instances
+---@field new fun(options:ulf.confkit.SchemaClassOptions?): ulf.confkit.SchemaClass
+---@overload fun(options:ulf.confkit.SchemaClassOptions?): ulf.confkit.SchemaClass
 
 ---@class ulf.confkit.schema.SchemaBase @SchemaBase are basic attributes for options and an instance
 
@@ -98,8 +107,6 @@ Schema.key_setter = function(self, key, value)
 	log.debug(
 		f("Schema.key_setter: key='%s' value='%s'", key, Spec.field.is_field_spec(value) and "Field SPEC" or value)
 	)
-	self._order[#self._order + 1] = key
-	table.sort(self._order)
 
 	---@type ulf.confkit.field.Field
 	local new_field
@@ -110,6 +117,8 @@ Schema.key_setter = function(self, key, value)
 			log.debug(f("Schema.key_setter: Field.parse result new_field=%s", new_field))
 			self._keys[key] = Schema.KEY_TYPE.FIELD
 			self._values[key] = new_field
+			self._order[#self._order + 1] = key
+			table.sort(self._order)
 		else
 		end
 	else
@@ -203,10 +212,7 @@ function Schema.route_fallback_values(self, fallback_map)
 			return
 		end
 
-		Field.set_flag(source, Field.FIELD_BEHAVIOUR.FALLBACK)
-		source.context = {
-			target = target,
-		}
+		source:set_fallback(target)
 		log.debug(
 			f(
 				"Schema.route_fallback_values: routing field '%s' to target '%s'|source.behaviour=%s, source.context.target=%s",
@@ -223,4 +229,48 @@ function Schema.route_fallback_values(self, fallback_map)
 	end
 end
 
+---@param self ulf.confkit.schema.Schema
+---@param options? ulf.confkit.SchemaClassOptions
+function Schema.create_class(self, options)
+	---@type ulf.confkit.SchemaClass
+	local Class = setmetatable({}, {
+		__call = function(t, ...)
+			return t.new(...)
+		end,
+	})
+
+	function Class.new(opts)
+		opts = opts or {}
+		return setmetatable({
+			_schema = deepcopy(self),
+		}, {
+			__index = function(t, k)
+				local v = rawget(t, k) or rawget(Class, k)
+				if v ~= nil then
+					return v
+				end
+				-- local _schema = rawget(t, "_schema")
+
+				return self[k]
+			end,
+		})
+	end
+	return Class
+end
+
+---@param self ulf.confkit.schema.Schema
+---@param order? string[]
+---@param path? string
+Schema.fields = function(self, order, path)
+	order = order or self._order
+	return Traversal.fields(self, order, path)
+end
+
+---@param self ulf.confkit.schema.Schema
+---@param fn ulf.confkit.traversal.visitor
+---@param order? "post_order"|"level_order"
+Schema.walk = function(self, fn, order)
+	order = order or "post_order"
+	return Traversal.walk[order](self, {}, fn)
+end
 return Schema

@@ -176,7 +176,7 @@ describe("#ulf.confkit.field", function()
 
 				it("fails when string length exceeds maxlen", function()
 					assert.has_error(function()
-						local f = Field({
+						Field({
 							name = "test_field",
 							default = "default_value",
 							description = "A test field",
@@ -189,7 +189,7 @@ describe("#ulf.confkit.field", function()
 				end)
 				it("fails when string does not match pattern", function()
 					assert.has_error(function()
-						local f = Field({
+						Field({
 							name = "test_field",
 							default = "default_value",
 							description = "A test field",
@@ -228,6 +228,17 @@ describe("#ulf.confkit.field", function()
 			f.value = nil
 			assert.equal(Field.NIL, f._value)
 			assert.equal("debug", f.value)
+		end)
+
+		it("fails when validates raises an error", function()
+			assert.has_error(function()
+				local f = Field({
+					name = "severity",
+					default = "debug",
+					description = "severity level",
+				})
+				f.value = false
+			end)
 		end)
 		describe("default value", function()
 			it("changing a default value returns it when value is not set", function()

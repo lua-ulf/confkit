@@ -39,4 +39,49 @@ M.severity_to_number = function(severity_name)
 	return smap[severity_name]
 end
 
+---@return test.TestSchema
+M.create_test_schema = function()
+	local Schema = require("ulf.confkit.schema")
+  ---@class test.TestSchema.global : ulf.confkit.schema.Schema,ulf.confkit.SchemaClass
+  ---@field severity ulf.confkit.field.Field
+
+  ---@class test.TestSchema.logger.default : ulf.confkit.schema.Schema,ulf.confkit.SchemaClass
+  ---@field filename ulf.confkit.field.Field
+  ---@field severity ulf.confkit.field.Field
+
+  ---@class test.TestSchema.logger : ulf.confkit.schema.Schema,ulf.confkit.SchemaClass
+  ---@field default test.TestSchema.logger.default
+
+  -- stylua: ignore
+  ---@class test.TestSchema : ulf.confkit.schema.Schema,ulf.confkit.SchemaClass
+  ---@field fallback ulf.confkit.field.Field
+  ---@field description ulf.confkit.field.Field
+  ---@field version ulf.confkit.field.Field
+  ---@field enabled ulf.confkit.field.Field
+  ---@field opts ulf.confkit.field.Field
+  ---@field priority ulf.confkit.field.Field
+  ---@field tag ulf.confkit.field.Field
+  ---@field logger test.TestSchema.logger
+  ---@field global test.TestSchema.global
+  return Schema({
+    version = {[[This is the schema version]], value = "1.1.0",},
+    enabled = {true, [[This is an boolean tag]],},
+    priority = {10, [[This is the priority field]], type = "number",},
+    opts = {[[This is the opts field]], type = "table",},
+    tag = {[[This is an optional tag]], type = "string",},
+    global = Schema({
+      severity = {"info", "Global severity level", hook = M.severity_to_number, type = "number",},
+    }, "Global settings"),
+    logger = Schema({
+      default = Schema({
+        filename = {"Logger filename", type = "string",},
+        severity = {"Logger severity level", hook = M.severity_to_number, type = "number",},
+      }, "Default logger settings"),
+    }, "Logger settings"),
+  }, {
+    description = "Schema root",
+    fallback = { ["logger.default.severity"] = "global.severity" }
+  })
+end
+
 return M
