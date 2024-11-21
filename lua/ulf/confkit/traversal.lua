@@ -1,21 +1,11 @@
 ---@class ulf.confkit.traversal
 local M = {}
 
-local split = require("ulf.lib.string.splitter").split
-local deepcopy = require("ulf.lib.table").deepcopy
-local tbl_isempty = require("ulf.lib.table").tbl_isempty
-local tbl_get = require("ulf.lib.table").tbl_get
-local Field = require("ulf.confkit.field")
-local log = require("ulf.confkit.logger")
-
-local Spec = require("ulf.confkit.spec")
 local Util = require("ulf.confkit.util")
 local is_schema = Util.is_schema
 local is_field = Util.is_field
 
-local f = string.format
 local unpack = table.unpack or unpack
--- local make_message = require("ulf.lib.error").make_message
 
 ---@alias ulf.confkit.traversal.visitor fun(node_path:ulf.confkit.traversal.node_path,field:ulf.confkit.field.Field)
 
@@ -29,7 +19,10 @@ local new_childs = function(parent, key)
 	return child_nodes
 end
 
----comment
+---@class ulf.confkit.traversal.node_path
+---@field parent string
+---@field node_name string
+
 ---@param parent string
 ---@param node_name string
 M.node_path = function(parent, node_name)
@@ -50,12 +43,10 @@ M.walk = {}
 ---@param fn ulf.confkit.traversal.visitor
 M.walk.post_order = function(node, parent, fn)
 	local parent_path = table.concat(parent, ".")
-	-- Traverse child nodes first
-	-- for _, node_path, child in node:fields(nil, parent_path) do
 	for node_name, child in pairs(node._values) do
 		if is_schema(child) then
 			---@cast child ulf.confkit.schema.Schema
-			-- Create a new path for the child node and recursively traverse it
+			-- Create a new path for the child node
 			local child_path = new_childs(parent, node_name)
 
 			-- Perform post-order traversal on the child node
@@ -68,24 +59,19 @@ M.walk.post_order = function(node, parent, fn)
 	end
 end
 
----@class ulf.confkit.traversal.node_path
----@field parent string
----@field node_name string
-
 --- Iterates over all defined config fields.
 ---@param obj ulf.confkit.schema.Schema
 ---@param keys string[]
----@param path?  string
 ---@return function
 ---@return string[]
 ---@return integer
-M.fields = function(obj, keys, path)
+M.fields = function(obj, keys)
 	-- Create a list to store ordered nodes
 	local temp_list = {}
-	path = path or ""
 
 	-- Use the correct ordering
 	for _, k in ipairs(keys) do
+		---@type ulf.confkit.field.Field
 		local _field = obj[k]
 		table.insert(temp_list, _field)
 	end
@@ -98,8 +84,7 @@ M.fields = function(obj, keys, path)
 		i = i + 1
 		if i <= #a then
 			---@type ulf.confkit.traversal.node_path
-			local node_path = M.node_path(path, a[i].name)
-			return i, node_path, a[i]
+			return i, a[i]
 		end
 	end
 

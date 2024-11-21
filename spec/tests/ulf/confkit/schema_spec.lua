@@ -332,10 +332,10 @@ describe("#ulf.confkit.schema", function()
 				-- Collect results from pairs iterator
 				---@type string[]
 				local results = {}
-				for _, node_path, node in ---@diagnostic disable-line: no-unknown
+				for _, node in ---@diagnostic disable-line: no-unknown
 					TestSchema:fields() --[[@as table<string,ulf.confkit.schema.Schema> ]]
 				do
-					table.insert(results, { tostring(node_path), node.value })
+					table.insert(results, { tostring(node.name), node.value })
 				end
 				assert.same(expected, results)
 			end)

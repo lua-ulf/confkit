@@ -22,20 +22,6 @@ end
 ---comment
 ---@param t table
 ---@return boolean
-function M.is_ctable(t)
-	return _is_type(t, "ctable")
-end
-
----comment
----@param t table
----@return boolean
-function M.is_config_block(t)
-	return _is_type(t, "ConfigBlock")
-end
-
----comment
----@param t table
----@return boolean
 function M.is_field(t)
 	return _is_type(t, "ulf.confkit.Field")
 end
@@ -51,12 +37,6 @@ end
 ---@return boolean
 function M.is_schema(t)
 	return _is_type(t, "ulf.confkit.Schema")
-end
-
----@param t table
----@return boolean
-function M.is_config_class(t)
-	return _is_type(t, "config_class")
 end
 
 return M

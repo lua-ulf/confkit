@@ -260,10 +260,9 @@ end
 
 ---@param self ulf.confkit.schema.Schema
 ---@param order? string[]
----@param path? string
-Schema.fields = function(self, order, path)
+Schema.fields = function(self, order)
 	order = order or self._order
-	return Traversal.fields(self, order, path)
+	return Traversal.fields(self, order)
 end
 
 ---@param self ulf.confkit.schema.Schema
